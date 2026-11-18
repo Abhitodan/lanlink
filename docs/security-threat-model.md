@@ -22,6 +22,8 @@ network.
 | Host process → disk | identity, trust store | DPAPI (current user) |
 | Phone app → disk | identity | AES-256-GCM key in Android Keystore; excluded from backup |
 | Phone UI → native | JNI | handle registry, panic catching |
+| iPhone app → disk | identity | iOS Keychain, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` (not synced) |
+| iPhone UI → native | C ABI (`ios/native-bridge`) | handle registry, panic catching |
 
 ## Threats and mitigations
 
@@ -35,6 +37,8 @@ network.
 | Spoofed names (text-direction overrides, control characters) | Names from the network are cleaned before display or storage | `display_name` tests |
 | Connection flooding from the LAN | Slots reserved atomically at accept (8); unknown devices limited to 4; unpaired connections closed after 90 s | e2e |
 | PC screen leaking on the phone | `FLAG_SECURE` while controlling (opt-out setting); keyboard asked not to learn typed text | design |
+| Theft of the iPhone identity key | Stored in the iOS Keychain, readable only after the first unlock since boot and only on this device (`ThisDeviceOnly`: not in iCloud Keychain, not restored from a backup to another device). A transient Keychain error never deletes the identity | `IdentityStore` unit tests (Keychain attributes) |
+| PC screen leaking from the iPhone (app switcher, screen recording) | A privacy cover hides the app in the app switcher. While iOS reports the screen is being recorded or mirrored, a "Screen recording is on" notice hides the video. iOS gives apps no way to block a user's own screenshots, so there is no equivalent of `FLAG_SECURE` (see residual risks) | Swift unit tests cover the app-switcher cover only; the screen-recording notice (`UIScreen.isCaptured`) is untested; **neither is verified on a real iPhone** |
 | Impersonating a paired phone | TLS proves key possession; host authorizes by fingerprint (constant-time compare) | transport tests |
 | Replay | TLS 1.3, no 0-RTT; per-session input sequence (gaps/duplicates close the connection); random session ids | `sequencer_rejects_duplicates_and_gaps` |
 | Malformed or oversized messages | Every length checked before allocation; strict decoding; property tests over random and bit-flipped input | `tests/fuzz.rs` (8 properties × 2000 cases) |
@@ -57,6 +61,11 @@ network.
   revoked on the PC. Session-approval mode (`--approve-sessions`) mitigates.
 * `spake2` and `ring` are third-party crypto; `spake2` is pre-1.0 and
   unaudited.
+* **iPhone screenshots cannot be blocked.** On iOS the user can take a
+  screenshot of the remote screen at any time. The privacy cover and the
+  screen-recording notice reduce accidental exposure; they do not stop a
+  deliberate screenshot, and they have not been tested on a real iPhone.
+  Android's `FLAG_SECURE` has no iOS counterpart.
 * Screen contents are visible to whoever holds the paired phone; protected
   content stays black only where Windows enforces it.
 * Denial of service from the LAN (UDP flood) is not mitigated beyond QUIC's

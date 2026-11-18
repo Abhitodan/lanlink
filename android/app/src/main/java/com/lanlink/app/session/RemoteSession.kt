@@ -119,6 +119,8 @@ class RemoteSession(
     @Volatile private var rttUs = 0L
     @Volatile private var offsetUs = 0L
     private val sticky = linkedSetOf<Int>()
+    /** SessionStart sent on the current connection (the PC needs one per connection). */
+    @Volatile private var sessionRequested = false
 
     // ------------------------------------------------------------ lifecycle
 
@@ -215,6 +217,7 @@ class RemoteSession(
     }
 
     private fun onConnected(h: Long) {
+        sessionRequested = false
         _state.update { it.copy(phase = Phase.STARTING, message = null) }
         val caps = DecoderProbe.best()?.second
         val metrics = app.displayMetrics()
@@ -286,9 +289,13 @@ class RemoteSession(
                     val d = arr.getJSONObject(it)
                     DisplayItem(d.getLong("id"), d.getString("name"), d.getInt("width"), d.getInt("height"), d.getBoolean("primary"))
                 }
-                val firstList = _state.value.displays.isEmpty()
                 _state.update { it.copy(displays = list) }
-                if (firstList && _state.value.phase == Phase.STARTING) requestSession(h)
+                // Once per connection: the list is kept across reconnects
+                // (no flicker), but every connection needs its own SessionStart.
+                if (!sessionRequested && _state.value.phase == Phase.STARTING) {
+                    sessionRequested = true
+                    requestSession(h)
+                }
             }
             "sessionStarted" -> {
                 val sid = o.getLong("sessionId")

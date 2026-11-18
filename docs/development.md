@@ -63,6 +63,42 @@ cargo run --release -p lanlink-host-console --example test_host -- `
 adb shell am start -a android.intent.action.VIEW -d "<PAIRING_URI printed by test_host>"
 ```
 
+## iPhone app
+
+The iPhone app (`ios/`) is built and tested by CI on GitHub's `macos-15` runners (`.github/workflows/ios.yml`, workflow `ios`). On every pull request it:
+
+1. adds the Rust targets `aarch64-apple-ios`, `aarch64-apple-ios-sim` and `x86_64-apple-ios` and runs `cargo test -p lanlink-mobile -p lanlink-ios`;
+2. checks the C header (`python3 scripts/check-ios-header.py`);
+3. builds `ios/build/LanLinkCore.xcframework` with `scripts/build-ios-core.sh` (deployment target iOS 16.0);
+4. generates the Xcode project with `xcodegen` and runs the unit and UI tests on an iPhone simulator;
+5. builds for `generic/platform=iOS` with `CODE_SIGNING_ALLOWED=NO`, which proves the app compiles for iPhone hardware without signing it;
+6. uploads the `.xcresult` bundle (`ios-test-results`) and the UI-test screenshots (`ios-screenshots`) as artifacts.
+
+Download the screenshots with `gh run download <run-id> -n ios-screenshots`.
+
+### Local build on a Mac
+
+Requires macOS with Xcode, Rust, `xcodegen` (`brew install xcodegen`) and the iOS targets:
+
+```sh
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+cargo test -p lanlink-mobile -p lanlink-ios
+IPHONEOS_DEPLOYMENT_TARGET=16.0 scripts/build-ios-core.sh   # -> ios/build/LanLinkCore.xcframework
+(cd ios && xcodegen)                                       # -> ios/LANLink.xcodeproj
+open ios/LANLink.xcodeproj
+```
+
+Command-line tests, as CI runs them:
+
+```sh
+xcodebuild test -project ios/LANLink.xcodeproj -scheme LANLink \
+  -destination "platform=iOS Simulator,name=iPhone 16"
+```
+
+### Running on a real iPhone
+
+The repository signs nothing. In Xcode, select the `LANLink` target, choose your own Apple development team under Signing & Capabilities, set a unique bundle identifier, and run on the connected iPhone. Allow the Local Network permission at the first prompt so the app can find and reach the PC. The phone and the PC must be on the same Wi-Fi, with the same firewall rules as for Android. The app has not been run on a real iPhone yet (see [implementation-status.md](implementation-status.md#iphone-app-ios-app-branch)).
+
 ## Debugging & Telemetry
 
 - **Windows host log file:** `%LOCALAPPDATA%\LANLink\lanlink-host.log` (or set `RUST_LOG=debug` when running from a terminal).
@@ -73,4 +109,5 @@ adb shell am start -a android.intent.action.VIEW -d "<PAIRING_URI printed by tes
 
 - Windows host crates (`capture-windows`, `encoder`, `input-windows`, `session-manager`, `lanlink-host`, `lanlink-host-console`) are gated with `#![cfg(windows)]`.
 - Shared crates (`lanlink-protocol`, `lanlink-auth`, `lanlink-transport`, `lanlink-discovery`, `lanlink-client`, `lanlink-mobile`) are cross-platform.
+- iOS C-ABI library (`ios/native-bridge`, crate `lanlink-ios`): built by `scripts/build-ios-core.sh` with `--profile release-ios` for the three iOS targets and packaged as `LanLinkCore.xcframework` (device + simulator).
 - Android JNI library (`android/native-bridge`): built via `cargo ndk -t arm64-v8a -t x86_64 -P 29 -o android/app/src/main/jniLibs build --profile release-android -p lanlink-android` (`opt-level = "s"`, `lto = "fat"`, `panic = "unwind"`).

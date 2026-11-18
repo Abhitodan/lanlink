@@ -1,0 +1,103 @@
+# iPhone app: Rust bridge tests, LanLinkCore.xcframework, Swift unit and UI
+# tests on the simulator, and a device build (unsigned) that proves the app
+# compiles for iPhone hardware.
+name: ios
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 75
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo and the xcframework
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+            ios/build
+          key: ios-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('ios/native-bridge/**') }}
+          restore-keys: |
+            ios-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}-
+            ios-${{ runner.os }}-
+
+      - name: Rust iOS targets
+        run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+
+      - name: Rust bridge tests
+        run: cargo test -p lanlink-mobile -p lanlink-ios
+
+      - name: Header check
+        run: python3 scripts/check-ios-header.py
+
+      - name: Build LanLinkCore.xcframework
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        run: scripts/build-ios-core.sh
+
+      - name: Generate Xcode project
+        run: brew install xcodegen && (cd ios && xcodegen)
+
+      - name: Pick simulator
+        id: sim
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available
+          if xcrun simctl list devices available | grep -q "iPhone 16 ("; then
+            name="iPhone 16"
+          else
+            name=$(xcrun simctl list devices available | grep -o "iPhone [^(]*" | head -1 | sed 's/ *$//')
+          fi
+          echo "Using simulator: $name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Unit and UI tests
+        run: |
+          mkdir -p build
+          xcodebuild test \
+            -project ios/LANLink.xcodeproj \
+            -scheme LANLink \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }}" \
+            -resultBundlePath build/Tests.xcresult
+
+      - name: Device build
+        run: |
+          xcodebuild build \
+            -project ios/LANLink.xcodeproj \
+            -scheme LANLink \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Export screenshots
+        if: always()
+        run: |
+          mkdir -p build/screenshots
+          if [ -d build/Tests.xcresult ]; then
+            xcrun xcresulttool export attachments \
+              --path build/Tests.xcresult \
+              --output-path build/screenshots || echo "no attachments exported"
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-results
+          path: build/Tests.xcresult
+          if-no-files-found: ignore
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-screenshots
+          path: build/screenshots
+          if-no-files-found: ignore

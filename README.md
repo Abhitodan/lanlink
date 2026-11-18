@@ -17,6 +17,7 @@ No cloud relay, no account, no subscription: the screen goes straight from your 
 <p>
   <a href="#how-it-helps">How it helps</a> ·
   <a href="#what-it-looks-like">Screenshots</a> ·
+  <a href="#iphone-app-work-in-progress">iPhone</a> ·
   <a href="#features">Features</a> ·
   <a href="#how-it-works">Architecture</a> ·
   <a href="#security">Security</a> ·
@@ -57,6 +58,24 @@ No cloud relay, no account, no subscription: the screen goes straight from your 
 
 <sub>Phone UI screenshots use fictional host data ("Studio PC", `192.168.1.20`).</sub>
 
+## iPhone app (work in progress)
+
+An iPhone client is under development on the `ios-app` branch. It is a Swift/SwiftUI twin of the Android app and uses the same Rust core through a C interface (`ios/native-bridge`, the `lanlink-ios` crate). It needs iOS 16 or newer.
+
+**Status:** the app builds and its automated tests pass on GitHub's macOS runners, but it has **not been run on a real iPhone, and not against a real PC from an iPhone**. There are no latency numbers for it. The screenshots below come from the simulator UI tests and show fictional data. The full list of what is and is not verified is in [docs/implementation-status.md](docs/implementation-status.md#iphone-app-ios-app-branch).
+
+| Home: your PCs | Pairing link asks first | Pair a PC | First launch | Security |
+|:---:|:---:|:---:|:---:|:---:|
+| <img src="docs/media/ios-01-home.png" width="150" alt="iPhone app: Home: your PCs" /> | <img src="docs/media/ios-02-offer.png" width="150" alt="iPhone app: Pairing link asks first" /> | <img src="docs/media/ios-03-pair.png" width="150" alt="iPhone app: Pair a PC" /> | <img src="docs/media/ios-07-onboarding.png" width="150" alt="iPhone app: First launch" /> | <img src="docs/media/ios-06-security.png" width="150" alt="iPhone app: Security" /> |
+
+| Settings | Touch and pointer settings | Performance | Remote view, compact keyboard | Display and keyboard settings |
+|:---:|:---:|:---:|:---:|:---:|
+| <img src="docs/media/ios-04-settings.png" width="150" alt="iPhone app: Settings" /> | <img src="docs/media/ios-09b-settings-pointer.png" width="150" alt="iPhone app: Touch and pointer settings" /> | <img src="docs/media/ios-05-diagnostics.png" width="150" alt="iPhone app: Performance" /> | <img src="docs/media/ios-08-remote-keyboard.png" width="150" alt="iPhone app: Remote view, compact keyboard" /> | <img src="docs/media/ios-09-settings-controls.png" width="150" alt="iPhone app: Display and keyboard settings" /> |
+
+<sub>Simulator screenshots from the UI tests (`ios-screenshots` artifact of the `ios` workflow). Fictional host data ("Studio PC", `192.168.1.20`).</sub>
+
+Build instructions: [docs/development.md](docs/development.md#iphone-app). Nothing is signed by the repository; running on a device needs your own Apple signing team.
+
 ## Features
 
 - **Zero-trust LAN pairing.** Scan a QR code or enter an 8-digit code. Both screens display the same 6-digit confirmation number derived from SPAKE2 + the TLS 1.3 session exporter, and the person at the PC approves. Any paired phone can be revoked on the PC at any time.
@@ -79,6 +98,7 @@ No cloud relay, no account, no subscription: the screen goes straight from your 
 
 - **Windows Host (`host/`):** Rust workspace crates for display enumeration and capture (`capture-windows`), GPU NV12 conversion and Media Foundation H.264 encoding (`encoder`), `SendInput` injection and UI Automation caret tracking (`input-windows`), session orchestration and DPAPI storage (`session-manager`), native GUI + system tray (`app`), and terminal host (`dev-host`).
 - **Shared Core (`crates/`):** Cross-platform wire protocol (`lanlink-protocol`), identity and SPAKE2 pairing (`lanlink-auth`), mutual-TLS QUIC transport (`lanlink-transport`), DNS-SD discovery (`lanlink-discovery`), client state machine (`lanlink-client`), and platform-neutral mobile bridge (`lanlink-mobile`).
+- **iPhone Client (`ios/`, in progress):** SwiftUI app, `AVSampleBufferDisplayLayer` video path (`CMSampleBuffer` from H.264 Annex-B), Keychain identity storage, and a C-ABI Rust layer (`ios/native-bridge`, crate `lanlink-ios`) over `lanlink-mobile`.
 - **Android Client (`android/`):** Kotlin + Jetpack Compose UI, custom low-latency `SurfaceView` + `CursorView` + `MediaCodec` pipeline, Android Keystore `AES-256-GCM` identity protection, and a thin panic-safe Rust JNI layer (`android/native-bridge`).
 
 Deep-dive documentation:
@@ -164,6 +184,9 @@ host/
 android/
   app/                 Kotlin + Jetpack Compose client, SurfaceView/MediaCodec decoder, Keystore storage
   native-bridge/       Panic-safe JNI glue over lanlink-mobile (liblanlink.so)
+ios/
+  LANLink/             SwiftUI app (in progress); Swift unit tests in LANLinkTests, UI tests in LANLinkUITests
+  native-bridge/       C-ABI glue over lanlink-mobile (liblanlink_ios.a, packaged as LanLinkCore.xcframework)
 tests/
   integration/         Full host + client loopback QUIC end-to-end integration test suite
 docs/                  Architecture, wire protocol, threat model, benchmarks, release guide, ADRs

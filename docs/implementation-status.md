@@ -1,6 +1,6 @@
 # LANLink Implementation & Verification Ledger
 
-Last updated: 2026-11-17. Every capability listed as completed is backed by automated tests or recorded hardware runs.
+Last updated: 2026-11-18. Every capability listed as completed is backed by automated tests or recorded hardware runs.
 
 ## Verification Environment
 
@@ -100,10 +100,62 @@ A multi-stage security audit was conducted across the protocol, pairing state ma
 | E4 | Low | Failed `NsdManager` discovery start left listener reference non-null | Clear listener and callback state on failure so subsequent `start()` calls retry cleanly | Verified in `Discovery.kt` |
 | E5 | Low | Malformed JSON control event could crash the client event thread | Catch `JSONException` per event and continue polling | Verified in `RemoteSession.kt` |
 
+## iPhone app (`ios-app` branch)
+
+Status: **in progress, not merged.** The app builds and passes its automated tests in CI. It has **not been run on a real iPhone** and has not controlled a real PC from an iPhone. Nothing in this section is a device result.
+
+### Verified in CI (GitHub runners, commit `a2c6010`)
+
+| Check | Result |
+|---|---|
+| `cargo test -p lanlink-mobile -p lanlink-ios` (workflow `ios`, run 44409767479, `macos-15`) | **16 passed** (the C-ABI crate and the shared mobile core) |
+| `cargo test --workspace` (workflow `CI`, run 44409767529, Windows runner) | **132 passed**, 3 ignored (excludes the integration-test crate and skips one capture test, see `ci.yml`) |
+| Xcode `LANLinkTests` (Swift unit tests, iPhone simulator, run 44409767479) | **78 passed**, 0 failures |
+| Xcode `LANLinkUITests` (simulator, same run) | **2 passed**: `testScreens` (walks the screens and saves the screenshots shown in the README) and `testRemoteKeyboard` |
+| Device build (`generic/platform=iOS`, `CODE_SIGNING_ALLOWED=NO`) | Built, unsigned |
+| C header check (`scripts/check-ios-header.py`) | Passed |
+| Android `:app:testDebugUnitTest` and `:app:lintDebug` (workflow `CI`) | Passed |
+
+The Swift unit tests include twins of the Android core-logic tests (viewport, touch, trackpad cursor, compact keyboard, key map, display text, paired host), plus tests for the stores (including the Keychain attributes), discovery, the Annex-B parser and video decoder, the remote session (including connection epochs, so a trip to the background while connecting cannot leave a second connection open: `testStaleEpochHandleIsClosed`, `testSecondHandleIsClosed`, `testCurrentEpochIsAcceptedUnlessStopped`; and sticky modifiers cleared by `releaseAll()` and `stop()`: `testReleaseAllAndStopClearStickyModifiers`), the Local Network denial messages (`testConnectErrorPointsToLocalNetworkWhenDenied`, `testPairErrorPointsToLocalNetworkWhenDenied`, `testDenialSurvivesStop`, `testDeniedNoteNamesTheSettingAndOffersNoWorkaround`), the app-switcher privacy cover and key repeat. The "Screen recording is on" notice has no test. The decode path is tested with a small H.264 fixture on the simulator.
+
+### Changes to shared and Android code made for the iPhone work
+
+* **Input sent right after a session binds is no longer dropped.** The client opens the input stream on demand instead of waiting for a change notification (`input_sent_immediately_after_bind_is_not_lost`). This is in the shared client crate, so it applies to Android and iOS.
+* **The stream is requested again after a reconnect.** Before this, a reconnect could stay on "Starting the stream…". Android (`RemoteSession.kt`) and iOS now request the stream once per connection. Covered on iOS by a unit test (`RemoteSessionTests`, `SessionRequestGate`). On Android the same change is made, and the existing unit tests and the debug build pass, but no Android test exercises this path and it is not verified on a device.
+
+### Differences from the Android app
+
+| Area | Android | iPhone |
+|---|---|---|
+| Identity protection | Android Keystore `AES-256-GCM`, excluded from backup | iOS Keychain, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` (not synced) |
+| Screen privacy | `FLAG_SECURE` blocks screenshots, recording and Recents | iOS cannot block a user's own screenshots. The app shows a privacy cover in the app switcher and a "Screen recording is on" notice that hides the video |
+| Network permission | None before Android 17 | Local Network permission prompt |
+| Text input | IME composition (Chinese, Japanese, Korean) supported | No composing text for Chinese, Japanese or Korean keyboards |
+| Mouse | Hover and scroll wheel from a connected mouse | No hover or scroll wheel |
+| Hardware keys | Auto-repeat | No hardware-key auto-repeat |
+
+### Not verified
+
+None of the following has been tested on a real iPhone:
+
+* A real iPhone, and a real PC controlled from an iPhone.
+* Device latency (no iPhone latency numbers exist).
+* Real Bonjour discovery, the Local Network prompt, and what happens when it is denied.
+* The camera QR scanner.
+* A pairing link that cold-launches the app.
+* The app-switcher cover and the screen-recording notice.
+* Reconnect after the app was in the background.
+* Hardware keyboards.
+* Gesture feel.
+* Decoding a real H.264 stream from a PC (only the small test fixture is decoded).
+* The alert tint on iOS 16.
+* Teardown while a pairing job is running.
+
 ## Roadmap / Not Yet Implemented
 
 * Authenticode code-signing certificate and MSIX/WiX installer for `lanlink-host.exe`.
 * HEVC / AV1 codecs and unreliable QUIC datagram video mode with forward error correction (FEC).
 * Remote audio streaming and opt-in clipboard synchronization.
 * Android 17 (API 37) `ACCESS_LOCAL_NETWORK` runtime permission migration ([ADR 0011](adr/0011-android-local-network-permission.md)).
+* iPhone app: run it on a real iPhone and complete the checks under [Not verified](#not-verified) before calling it supported.
 * High-speed camera physical input-to-photon latency measurement.

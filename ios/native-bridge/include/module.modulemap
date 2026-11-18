@@ -1,0 +1,4 @@
+module LanLinkCore {
+    header "lanlink.h"
+    export *
+}
