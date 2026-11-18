@@ -449,7 +449,8 @@ impl Connection {
     }
 
     /// Call when a `SessionStarted` event arrives, so input is tagged with
-    /// the right session and a fresh input stream is opened.
+    /// the right session and a fresh input stream is opened. Input sent
+    /// while no session is bound (id 0) is dropped.
     pub fn bind_session(&self, session_id: u32) {
         self.session_id.store(session_id, Ordering::SeqCst);
         self.pointer_seq.store(0, Ordering::SeqCst);
@@ -461,7 +462,8 @@ impl Connection {
     }
 
     /// Reliable input (buttons, keys, text, scroll). Never blocks; returns
-    /// `false` if the queue is full.
+    /// `false` if the queue is full. Input sent while no session is bound is
+    /// dropped.
     pub fn send_input(&self, kind: InputKind) -> bool {
         self.input.try_send(kind).is_ok()
     }
@@ -778,20 +780,31 @@ async fn input_writer(
             changed = session.changed() => {
                 if changed.is_err() { break; }
                 let id = *session.borrow();
-                if let Some((_, _, mut s)) = stream.take() { let _ = s.finish(); }
-                if id != 0 {
-                    match conn.open_uni().await {
-                        Ok(mut s) => {
-                            if write_stream_kind(&mut s, StreamKind::Input).await.is_ok() {
-                                stream = Some((id, 0, s));
-                            }
-                        }
-                        Err(_) => break,
-                    }
+                // The stream for a new session is opened by the first input,
+                // so input sent right after `bind_session` is never lost.
+                if stream.as_ref().is_some_and(|(sid, _, _)| *sid != id) {
+                    if let Some((_, _, mut s)) = stream.take() { let _ = s.finish(); }
                 }
             }
             kind = rx.recv() => {
                 let Some(kind) = kind else { break };
+                let id = *session.borrow();
+                // No session: there is nothing to send this to.
+                if id == 0 { continue; }
+                if stream.as_ref().is_some_and(|(sid, _, _)| *sid != id) {
+                    if let Some((_, _, mut s)) = stream.take() { let _ = s.finish(); }
+                }
+                if stream.is_none() {
+                    match conn.open_uni().await {
+                        Ok(mut s) => {
+                            if write_stream_kind(&mut s, StreamKind::Input).await.is_err() {
+                                continue;
+                            }
+                            stream = Some((id, 0, s));
+                        }
+                        Err(_) => break,
+                    }
+                }
                 let Some((sid, seq, s)) = stream.as_mut() else { continue };
                 *seq = seq.wrapping_add(1);
                 let ev = InputEvent { session_id: *sid, seq: *seq, kind };

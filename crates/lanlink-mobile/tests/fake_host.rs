@@ -43,7 +43,6 @@ struct HostState {
     trust: Mutex<TrustStore>,
     window: Mutex<Option<PairingWindow>>,
     inputs: std_mpsc::Sender<InputEvent>,
-    input_stream_open: std_mpsc::Sender<()>,
 }
 
 struct FakeHost {
@@ -53,7 +52,6 @@ struct FakeHost {
     fingerprint: Fingerprint,
     state: Arc<HostState>,
     inputs: std_mpsc::Receiver<InputEvent>,
-    input_stream_open: std_mpsc::Receiver<()>,
 }
 
 impl FakeHost {
@@ -61,7 +59,6 @@ impl FakeHost {
         let identity = Identity::generate("fake host").expect("identity");
         let fingerprint = identity.fingerprint();
         let (inputs_tx, inputs) = std_mpsc::channel();
-        let (open_tx, input_stream_open) = std_mpsc::channel();
         let state = Arc::new(HostState {
             identity,
             trust: Mutex::new(TrustStore::new()),
@@ -69,7 +66,6 @@ impl FakeHost {
                 PairingWindow::with_code(PAIRING_CODE, Instant::now()).expect("window"),
             )),
             inputs: inputs_tx,
-            input_stream_open: open_tx,
         });
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -87,7 +83,9 @@ impl FakeHost {
                 let st = st.clone();
                 tokio::spawn(async move {
                     if let Ok(conn) = incoming.await {
-                        let _ = serve(conn, st).await;
+                        if let Err(e) = serve(conn, st).await {
+                            eprintln!("fake host: connection ended: {e}");
+                        }
                     }
                 });
             }
@@ -98,7 +96,6 @@ impl FakeHost {
             fingerprint,
             state,
             inputs,
-            input_stream_open,
         }
     }
 
@@ -181,7 +178,6 @@ async fn serve(conn: quinn::Connection, st: Arc<HostState>) -> Result<(), String
             if !matches!(read_stream_kind(&mut r).await, Ok(StreamKind::Input)) {
                 continue;
             }
-            let _ = input_st.input_stream_open.send(());
             while let Ok(Some(ev)) = read_input(&mut r).await {
                 let _ = input_st.inputs.send(ev);
             }
@@ -449,13 +445,47 @@ fn input_reaches_the_host_in_order() {
     let h = connect_to(&host, &id);
     start_streaming(h);
 
-    // The phone opens its input stream when the session is bound.
     bind_session(h, SESSION_ID as i64).expect("bind_session");
-    host.input_stream_open
-        .recv_timeout(WAIT)
-        .expect("host never saw the input stream");
-    // The stream is usable on the phone side a moment after the host sees it.
-    std::thread::sleep(Duration::from_millis(100));
+
+    assert!(send_key(h, 0x41, true).expect("key down"));
+    assert!(send_key(h, 0x41, false).expect("key up"));
+    assert!(send_text(h, "h\u{e9}").expect("text"));
+
+    let got: Vec<InputEvent> = (0..3)
+        .map(|_| host.inputs.recv_timeout(WAIT).expect("input event"))
+        .collect();
+    let kinds: Vec<_> = got.iter().map(|e| e.kind.clone()).collect();
+    assert_eq!(
+        kinds,
+        [
+            InputKind::Key {
+                vk: 0x41,
+                down: true
+            },
+            InputKind::Key {
+                vk: 0x41,
+                down: false
+            },
+            InputKind::Text {
+                text: "h\u{e9}".into()
+            },
+        ]
+    );
+    let seqs: Vec<u32> = got.iter().map(|e| e.seq).collect();
+    assert_eq!(seqs, [1, 2, 3]);
+    assert!(got.iter().all(|e| e.session_id == SESSION_ID));
+    close(h);
+}
+
+#[test]
+fn input_sent_immediately_after_bind_is_not_lost() {
+    let host = FakeHost::start();
+    let (id, phone_fp) = new_phone();
+    host.trust(&phone_fp);
+    let h = connect_to(&host, &id);
+    start_streaming(h);
+
+    bind_session(h, SESSION_ID as i64).expect("bind_session");
 
     assert!(send_key(h, 0x41, true).expect("key down"));
     assert!(send_key(h, 0x41, false).expect("key up"));
