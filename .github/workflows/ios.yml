@@ -5,7 +5,7 @@ name: ios
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, ios-app]
   pull_request:
 
 jobs:
