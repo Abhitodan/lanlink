@@ -133,6 +133,59 @@ final class RemoteViewTests: XCTestCase {
 
         XCTAssertEqual(keys, Array(repeating: KeyMap.VK_BACK, count: 5))
     }
+
+    /// A held ⌫ whose touch is cancelled never reports its end; the screen
+    /// then stops every repeat (scene inactive, session not streaming), and
+    /// nothing more reaches the PC (review finding I1).
+    @MainActor
+    func testReleaseAllStopsAnActiveRepeat() {
+        let clock = ManualClock()
+        var keys: [Int] = []
+        let keyboard = CompactKeyboardController(
+            clock: clock, onText: { _ in }, onKey: { keys.append($0) }, onSticky: { _ in }, onHide: {})
+        let backspace = CompactLayout.rows(symbols: false, shifted: false)[0].last!
+
+        let hold = keyboard.press(backspace) // never released by its gesture
+        clock.advance(by: 500) // the press, then one repeat at 400 ms
+        XCTAssertEqual(keys.count, 2)
+        keyboard.releaseAll()
+        clock.advance(by: 5000)
+
+        XCTAssertEqual(keys.count, 2, "the repeat went on after releaseAll")
+        withExtendedLifetime(hold) {}
+    }
+
+    /// Back in the foreground, only a session the background stopped is
+    /// reconnected; one that had ended or failed waits for the user, as on
+    /// Android (review finding I2).
+    @MainActor
+    func testForegroundRetriesOnlyALiveSession() {
+        let center = NotificationCenter()
+        let guardian = PrivacyGuard(input: RecordingInput(), center: center)
+        var phase = Phase.ended
+        var calls: [String] = []
+        guardian.isLive = { phase.isLive }
+        guardian.onBackground = { calls.append("stop") }
+        guardian.onForeground = { calls.append("retry") }
+
+        for dead in [Phase.ended, .failed] {
+            phase = dead
+            calls.removeAll()
+            center.post(name: UIScene.didEnterBackgroundNotification, object: nil)
+            center.post(name: UIScene.willEnterForegroundNotification, object: nil)
+            XCTAssertEqual(calls, ["stop"], "\(dead) was reconnected without the user")
+        }
+
+        phase = .streaming
+        calls.removeAll()
+        center.post(name: UIScene.didEnterBackgroundNotification, object: nil)
+        center.post(name: UIScene.willEnterForegroundNotification, object: nil)
+        // A second foreground without a background in between does nothing.
+        center.post(name: UIScene.willEnterForegroundNotification, object: nil)
+        XCTAssertEqual(calls, ["stop", "retry"])
+        XCTAssertTrue([Phase.connecting, .starting, .reconnecting].allSatisfy { $0.isLive })
+        guardian.stop()
+    }
 }
 
 /// Records what the view sends to the PC.

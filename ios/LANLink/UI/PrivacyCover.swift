@@ -67,8 +67,12 @@ final class PrivacyGuard {
     }
     /// The app went to the background: end the connection.
     var onBackground: (() -> Void)?
-    /// Back in the foreground after `onBackground`: reconnect.
+    /// Back in the foreground after `onBackground` stopped a live session: reconnect.
     var onForeground: (() -> Void)?
+    /// Whether the session is live (connecting, starting, streaming,
+    /// reconnecting). Only a session the background stopped is reconnected;
+    /// one that had ended or failed waits for the user, as on Android.
+    var isLive: (() -> Bool)?
     /// Whether the picture must be hidden because the screen is captured.
     var onCaptureChanged: ((Bool) -> Void)? {
         didSet { applyCapture() }
@@ -76,7 +80,7 @@ final class PrivacyGuard {
 
     private var cover: PrivacyCoverView?
     private var observers: [NSObjectProtocol] = []
-    private var backgrounded = false
+    private var resumeOnForeground = false
 
     init(input: RemoteInput, center: NotificationCenter = .default) {
         self.input = input
@@ -116,13 +120,14 @@ final class PrivacyGuard {
     }
 
     private func didEnterBackground() {
-        backgrounded = true
+        // Read before stopping: stop() itself ends the session.
+        resumeOnForeground = isLive?() ?? false
         onBackground?()
     }
 
     private func willEnterForeground() {
-        guard backgrounded else { return }
-        backgrounded = false
+        guard resumeOnForeground else { return }
+        resumeOnForeground = false
         onForeground?()
     }
 
@@ -141,5 +146,15 @@ final class PrivacyGuard {
 
     private func applyCapture() {
         onCaptureChanged?(!allowScreenshots && UIScreen.main.isCaptured)
+    }
+}
+
+extension Phase {
+    /// Connected or on the way there (what a trip to the background stops).
+    var isLive: Bool {
+        switch self {
+        case .connecting, .starting, .streaming, .reconnecting: return true
+        case .ended, .failed: return false
+        }
     }
 }

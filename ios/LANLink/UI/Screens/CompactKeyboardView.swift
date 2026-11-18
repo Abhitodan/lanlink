@@ -60,6 +60,8 @@ final class CompactKeyboardController: ObservableObject {
     @Published private(set) var shiftVersion = 0
     let shift = ShiftState()
     private let clock: RepeatClock
+    /// Repeating keys still held.
+    private var holds: [KeyHold] = []
     private let onText: (String) -> Void
     private let onKey: (Int) -> Void
     private let onSticky: (Int) -> Void
@@ -86,8 +88,20 @@ final class CompactKeyboardController: ObservableObject {
     func press(_ k: KeySpec) -> KeyHold {
         let hold = KeyHold()
         act(k)
-        if k.repeats { repeatLater(k, after: REPEAT_DELAY_MS, hold) }
+        if k.repeats {
+            holds.removeAll { $0.isReleased }
+            holds.append(hold)
+            repeatLater(k, after: REPEAT_DELAY_MS, hold)
+        }
         return hold
+    }
+
+    /// Ends every repeat at once: the app left the foreground, the session
+    /// stopped streaming, or the keyboard went away. A cancelled touch never
+    /// reports its end, so a held ⌫ must not be left repeating on the PC.
+    func releaseAll() {
+        for h in holds { h.release() }
+        holds.removeAll()
     }
 
     private func repeatLater(_ k: KeySpec, after ms: Int64, _ hold: KeyHold) {
@@ -126,12 +140,16 @@ struct CompactKeyboardView: View {
     let sticky: Set<Int>
     /// Bottom safe area (home indicator), padded inside the keyboard.
     let bottomInset: CGFloat
+    /// False while the app is not active or the session is not streaming:
+    /// held keys stop repeating.
+    let live: Bool
     @StateObject private var controller: CompactKeyboardController
 
     init(
         keyHeight: CGFloat,
         sticky: Set<Int>,
         bottomInset: CGFloat,
+        live: Bool,
         onText: @escaping (String) -> Void,
         onKey: @escaping (Int) -> Void,
         onSticky: @escaping (Int) -> Void,
@@ -140,6 +158,7 @@ struct CompactKeyboardView: View {
         self.keyHeight = keyHeight
         self.sticky = sticky
         self.bottomInset = bottomInset
+        self.live = live
         _controller = StateObject(wrappedValue: CompactKeyboardController(
             onText: onText, onKey: onKey, onSticky: onSticky, onHide: onHide))
     }
@@ -166,6 +185,10 @@ struct CompactKeyboardView: View {
         .contentShape(Rectangle())
         .onTapGesture {}
         .frame(maxWidth: .infinity)
+        .onChange(of: live) { isLive in
+            if !isLive { controller.releaseAll() }
+        }
+        .onDisappear { controller.releaseAll() }
     }
 }
 
@@ -209,6 +232,9 @@ private struct KeyCap: View {
     let locked: Bool
     let controller: CompactKeyboardController
     @State var hold: KeyHold?
+    /// True while the finger is down; SwiftUI resets it when the gesture
+    /// ends *or is cancelled* (which never calls `onEnded`).
+    @GestureState var pressed = false
 
     private static let tap = UIImpactFeedbackGenerator(style: .light)
 
@@ -228,6 +254,7 @@ private struct KeyCap: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .updating($pressed) { _, state, _ in state = true }
                     .onChanged { _ in
                         guard hold == nil else { return }
                         Self.tap.impactOccurred()
@@ -237,6 +264,12 @@ private struct KeyCap: View {
                         hold?.release()
                         hold = nil
                     })
+            .onChange(of: pressed) { isPressed in
+                if !isPressed {
+                    hold?.release()
+                    hold = nil
+                }
+            }
             .onDisappear {
                 hold?.release()
                 hold = nil

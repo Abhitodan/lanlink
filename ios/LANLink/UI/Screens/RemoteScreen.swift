@@ -96,6 +96,7 @@ private struct RemoteContent<S: RemoteScreenSession>: View {
     @ObservedObject var session: S
     @StateObject private var ref = RemoteViewRef()
     @StateObject private var keyboard = KeyboardObserver()
+    @Environment(\.scenePhase) private var scenePhase
     @State private var panel = false
     @State private var poke = 0
     @State private var zoom: Float = 1
@@ -197,6 +198,7 @@ private struct RemoteContent<S: RemoteScreenSession>: View {
                             keyHeight: CGFloat(settings.keyHeight),
                             sticky: st.modifiers,
                             bottomInset: safeBottom,
+                            live: scenePhase == .active && st.phase == .streaming,
                             onText: { session.text($0) },
                             onKey: { session.tapKey($0) },
                             onSticky: { session.toggleSticky($0) },
@@ -367,6 +369,7 @@ private struct RemoteViewHost<S: RemoteScreenSession>: UIViewRepresentable {
         // released first) and come back on return.
         v.privacy.onBackground = { [weak s = session] in s?.stop() }
         v.privacy.onForeground = { [weak s = session] in s?.retry() }
+        v.privacy.isLive = { [weak s = session] in s?.state.phase.isLive ?? false }
         v.onZoomChanged = onZoom
         v.onThreeFingerTap = onThreeFingerTap
         if let still = session.stillFrame { v.showStill(still) }
