@@ -48,6 +48,12 @@ targets:
     platform: iOS
     sources:
       - path: LANLinkTests
+        excludes:
+          - Fixtures
+      # Test data (key64.h264), copied into the test bundle and loaded with
+      # Bundle(for:).
+      - path: LANLinkTests/Fixtures
+        buildPhase: resources
     dependencies:
       - target: LANLink
       # Makes the LanLinkCore module visible when compiling

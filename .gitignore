@@ -12,6 +12,8 @@ android/keystore.properties
 /dist/
 /benchmarks/out/
 *.h264
+# ...except the tiny test fixture the iOS unit tests decode.
+!ios/LANLinkTests/Fixtures/*.h264
 *.log
 
 # Local scratch & tooling outputs
