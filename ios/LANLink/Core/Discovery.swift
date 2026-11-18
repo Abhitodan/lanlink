@@ -33,9 +33,10 @@ final class Discovery: ObservableObject {
     private let queue = DispatchQueue(label: "lanlink.discovery")
     /// In-flight address lookups by service name.
     private var resolves: [String: Resolve] = [:]
-    /// Browse results per service name (one per network interface), so a
-    /// host only disappears when its last interface result is gone.
-    private var live: [String: Int] = [:]
+    /// The browse result (endpoint) each service name is being resolved
+    /// from, or was published from. A name is resolved once; it is resolved
+    /// again only when this result vanishes or changes.
+    private var sources: [String: NWEndpoint] = [:]
     private var generation = 0
 
     private final class Resolve {
@@ -75,7 +76,11 @@ final class Discovery: ObservableObject {
         let raw: String
         switch host {
         case .ipv4(let a): raw = a.debugDescription
-        case .ipv6(let a): raw = a.debugDescription
+        case .ipv6(let a):
+            // The Rust core drops the zone, so a link-local address can
+            // never be connected to. Do not publish it.
+            if a.isLinkLocal { return nil }
+            raw = a.debugDescription
         default: return nil
         }
         let noZone = raw.split(separator: "%", maxSplits: 1, omittingEmptySubsequences: false)
@@ -84,12 +89,22 @@ final class Discovery: ObservableObject {
         return t.isEmpty ? nil : t
     }
 
+    /// The service names present in a browse snapshot (endpoints of every
+    /// result, however many interfaces report the same name).
+    nonisolated static func liveNames(endpoints: [NWEndpoint]) -> Set<String> {
+        var names = Set<String>()
+        for e in endpoints {
+            if case .service(let name, _, _, _) = e { names.insert(name) }
+        }
+        return names
+    }
+
     // MARK: Start / stop
 
     func start() {
         if browser != nil { return }
         hosts = []
-        live = [:]
+        sources = [:]
         generation += 1
         let b = NWBrowser(for: .bonjourWithTXTRecord(type: Self.serviceType, domain: nil), using: .udp)
         b.stateUpdateHandler = { [weak self, weak b] state in
@@ -98,10 +113,10 @@ final class Discovery: ObservableObject {
                 self.handle(state: state, of: b)
             }
         }
-        b.browseResultsChangedHandler = { [weak self, weak b] _, changes in
+        b.browseResultsChangedHandler = { [weak self, weak b] results, changes in
             Task { @MainActor in
                 guard let self, let b, self.browser === b else { return }
-                self.handle(changes: changes)
+                self.handle(results: results, changes: changes)
             }
         }
         browser = b
@@ -113,7 +128,7 @@ final class Discovery: ObservableObject {
         browser?.cancel()
         browser = nil
         cancelResolves()
-        live = [:]
+        sources = [:]
         generation += 1
         status = .idle
     }
@@ -151,30 +166,40 @@ final class Discovery: ObservableObject {
         return nil
     }
 
-    private func handle(changes: Set<NWBrowser.Result.Change>) {
+    private func handle(results: Set<NWBrowser.Result>, changes: Set<NWBrowser.Result.Change>) {
+        // The snapshot is the truth; nothing is counted, so nothing drifts.
+        var byName: [String: [NWBrowser.Result]] = [:]
+        for r in results {
+            if let n = Self.serviceName(r) { byName[n, default: []].append(r) }
+        }
+        let live = Self.liveNames(endpoints: results.map { $0.endpoint })
+
+        // Hosts that are gone from the snapshot.
+        for n in Array(sources.keys) where !live.contains(n) {
+            sources[n] = nil
+            resolves.removeValue(forKey: n)?.cancel()
+        }
+        hosts = hosts.filter { live.contains($0.serviceName) }
+
+        // A changed result is re-resolved when it is the one in use.
         for change in changes {
-            switch change {
-            case .added(let r):
-                guard let n = Self.serviceName(r) else { continue }
-                live[n, default: 0] += 1
-                resolve(r, name: n, v4Only: true)
-            case .changed(_, let new, _):
-                guard let n = Self.serviceName(new) else { continue }
+            if case .changed(let old, let new, _) = change,
+               let n = Self.serviceName(new), sources[n] == old.endpoint {
                 resolve(new, name: n, v4Only: true)
-            case .removed(let r):
-                guard let n = Self.serviceName(r) else { continue }
-                let left = (live[n] ?? 1) - 1
-                if left <= 0 {
-                    live[n] = nil
-                    resolves.removeValue(forKey: n)?.cancel()
-                    hosts = hosts.filter { $0.serviceName != n }
-                } else {
-                    live[n] = left
-                }
-            default:
-                break
             }
         }
+
+        for (n, rs) in byName {
+            if let src = sources[n], rs.contains(where: { $0.endpoint == src }) { continue }
+            // Not yet resolved, or the result we used is gone: use a
+            // remaining one, preferring Wi-Fi or wired.
+            let best = rs.min { Self.rank($0) < Self.rank($1) }!
+            resolve(best, name: n, v4Only: true)
+        }
+    }
+
+    private static func rank(_ r: NWBrowser.Result) -> Int {
+        r.interfaces.contains { $0.type == .wifi || $0.type == .wiredEthernet } ? 0 : 1
     }
 
     // MARK: Resolving
@@ -184,6 +209,7 @@ final class Discovery: ObservableObject {
     /// Android prefers an Inet4Address), then any address.
     private func resolve(_ r: NWBrowser.Result, name: String, v4Only: Bool) {
         resolves.removeValue(forKey: name)?.cancel()
+        sources[name] = r.endpoint
         let params = NWParameters.udp
         if v4Only, let ip = params.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options {
             ip.version = .v4
@@ -232,7 +258,12 @@ final class Discovery: ObservableObject {
 
     private func fail(_ r: NWBrowser.Result, name: String, v4Only: Bool) {
         resolves.removeValue(forKey: name)?.cancel()
-        if v4Only { resolve(r, name: name, v4Only: false) }
+        if v4Only {
+            resolve(r, name: name, v4Only: false)
+        } else {
+            // Gave up: allow a later browse event to try again.
+            sources[name] = nil
+        }
     }
 
     private static func txtDictionary(_ r: NWBrowser.Result) -> [String: String] {
@@ -241,7 +272,7 @@ final class Discovery: ObservableObject {
     }
 
     private func publish(serviceName: String, txt: [String: String], address: String, port: Int) {
-        guard live[serviceName] != nil else { return }
+        guard sources[serviceName] != nil else { return }
         let p = Self.parseTXT(txt, serviceName: serviceName)
         let h = FoundHost(serviceName: serviceName, name: p.name, shortId: p.shortId,
                           address: address, port: port, protocol: p.protocol)
