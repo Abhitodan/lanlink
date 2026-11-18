@@ -1,0 +1,22 @@
+[package]
+name = "lanlink-host-console"
+description = "LANLink host as a console program (development and troubleshooting)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+lanlink-protocol.workspace = true
+lanlink-auth.workspace = true
+lanlink-discovery.workspace = true
+session-manager.workspace = true
+capture-windows.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+qrcode.workspace = true
+
+[dev-dependencies]
+input-windows.workspace = true

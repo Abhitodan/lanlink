@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- LANLink speaks only its own authenticated QUIC protocol. No cleartext
+     HTTP is used anywhere, so forbid it. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

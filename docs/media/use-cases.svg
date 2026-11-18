@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" width="1200" height="400" role="img" aria-label="How LANLink helps: four everyday situations">
+  <defs>
+    <style>
+      .t{font-family:Segoe UI,Helvetica Neue,Arial,sans-serif;fill:#E9E6DF}
+      .s{font-family:Segoe UI,Helvetica Neue,Arial,sans-serif;fill:#A9AEB6;font-size:15px}
+      .card{fill:#1E2227;stroke:#2D3239;stroke-width:2}
+      .ico{fill:none;stroke:#D9B98C;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+    </style>
+  </defs>
+  <rect width="1200" height="400" rx="24" fill="#15181C"/>
+  <text class="t" x="48" y="58" font-size="24" font-weight="600">How it helps</text>
+
+  <g transform="translate(48 92)">
+    <rect class="card" width="255" height="270" rx="14"/>
+    <g class="ico" transform="translate(22 24)"><rect x="0" y="6" width="40" height="26" rx="3"/><path d="M14 40h12M20 32v8"/><path d="M52 18h10M58 12v12"/></g>
+    <text class="t" x="22" y="100" font-size="18" font-weight="600">Away from the desk</text>
+    <text class="s" x="22" y="130">The PC is in the next room or</text>
+    <text class="s" x="22" y="152">across the office. Answer the</text>
+    <text class="s" x="22" y="174">chat, start the build, close the</text>
+    <text class="s" x="22" y="196">app that is hogging the fan,</text>
+    <text class="s" x="22" y="218">from the phone in your pocket.</text>
+  </g>
+  <g transform="translate(330 92)">
+    <rect class="card" width="255" height="270" rx="14"/>
+    <g class="ico" transform="translate(22 24)"><rect x="0" y="0" width="56" height="34" rx="3"/><path d="M28 34v10M16 44h24"/><path d="M12 22l10-8 8 6 12-10"/></g>
+    <text class="t" x="22" y="100" font-size="18" font-weight="600">Presenting</text>
+    <text class="s" x="22" y="130">Walk the room while the slides</text>
+    <text class="s" x="22" y="152">run on the PC. Trackpad mode is</text>
+    <text class="s" x="22" y="174">a real pointer: click, drag,</text>
+    <text class="s" x="22" y="196">scroll with two fingers, zoom</text>
+    <text class="s" x="22" y="218">in on a detail.</text>
+  </g>
+  <g transform="translate(612 92)">
+    <rect class="card" width="255" height="270" rx="14"/>
+    <g class="ico" transform="translate(22 24)"><rect x="0" y="10" width="60" height="30" rx="4"/><path d="M8 20h4M18 20h4M28 20h4M38 20h4M48 20h4M14 30h32"/></g>
+    <text class="t" x="22" y="100" font-size="18" font-weight="600">Real typing, small keyboard</text>
+    <text class="s" x="22" y="130">Esc, Tab, Ctrl, Alt, Win and</text>
+    <text class="s" x="22" y="152">arrows built in. The PC stays</text>
+    <text class="s" x="22" y="174">visible above the keys and the</text>
+    <text class="s" x="22" y="196">view follows the text cursor</text>
+    <text class="s" x="22" y="218">you are typing at.</text>
+  </g>
+  <g transform="translate(894 92)">
+    <rect class="card" width="258" height="270" rx="14"/>
+    <g class="ico" transform="translate(22 22)"><path d="M28 2l24 9v15c0 14-10 22-24 27C14 48 4 40 4 26V11z"/><path d="M18 27l7 7 13-14"/></g>
+    <text class="t" x="22" y="100" font-size="18" font-weight="600">Stays on your network</text>
+    <text class="s" x="22" y="130">No cloud relay, no account, no</text>
+    <text class="s" x="22" y="152">subscription. Your screen goes</text>
+    <text class="s" x="22" y="174">from your PC to your phone and</text>
+    <text class="s" x="22" y="196">nowhere else, encrypted, to a</text>
+    <text class="s" x="22" y="218">phone the PC approved.</text>
+  </g>
+</svg>

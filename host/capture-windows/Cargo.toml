@@ -1,0 +1,43 @@
+[package]
+name = "capture-windows"
+description = "LANLink Windows screen capture: monitor enumeration and DXGI Desktop Duplication"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+# Synthetic moving window for benchmarks. Never enabled in the product.
+test-pattern = []
+
+[target.'cfg(windows)'.dependencies.windows]
+workspace = true
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_StationsAndDesktops",
+    "Win32_Security",
+    "Win32_System_Performance",
+    "Win32_System_Com",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_LibraryLoader",
+    "Win32_System_WinRT",
+    "Win32_System_WinRT_Direct3D11",
+    "Win32_System_WinRT_Graphics_Capture",
+    "Foundation",
+    "Graphics",
+    "Graphics_Capture",
+    "Graphics_DirectX",
+    "Graphics_DirectX_Direct3D11",
+]

@@ -1,0 +1,26 @@
+/target/
+**/build/
+**/.gradle/
+**/.kotlin/
+**/.idea/
+*.iml
+local.properties
+android/app/src/main/jniLibs/
+android/keystore.properties
+*.jks
+*.keystore
+/dist/
+/benchmarks/out/
+*.h264
+*.log
+
+# Local scratch & tooling outputs
+/brag-output/
+/.superpowers/
+/docs/superpowers/
+
+# iOS build outputs
+ios/build/
+ios/*.xcodeproj/
+*.xcframework/
+DerivedData/
