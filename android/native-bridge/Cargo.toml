@@ -1,0 +1,18 @@
+[package]
+name = "lanlink-android"
+description = "JNI bridge for the LANLink Android app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "lanlink"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+lanlink-client.workspace = true
+lanlink-transport.workspace = true
+tokio.workspace = true
+jni = "0.21.1"

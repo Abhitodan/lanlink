@@ -1,0 +1,26 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; background: #15181c; font-family: "Inter", sans-serif; overflow: hidden; }
+    #ec-lockup { position: absolute; left: 0; right: 0; top: 330px; height: 200px; }
+    #ec-mark { position: absolute; left: 600px; top: 0; width: 200px; height: 200px; }
+    #ec-word { position: absolute; left: 840px; top: 32px; font-size: 128px; font-weight: 700; color: #e9e6df; letter-spacing: -0.02em; }
+    #ec-line { position: absolute; left: 0; right: 0; top: 600px; text-align: center; font-size: 52px; color: #e9e6df; }
+    #ec-cta { position: absolute; left: 0; right: 0; top: 700px; text-align: center; font-size: 36px; color: #a9aeb6; }
+  </style>
+  <div id="root" data-composition-id="endcard" data-width="1920" data-height="1080">
+    <div id="ec-lockup">
+      <img id="ec-mark" class="clip" data-start="0" data-duration="3.4" src="assets/logo.svg" alt="LANLink" />
+      <div id="ec-word" class="clip" data-start="0" data-duration="3.4">LANLink</div>
+    </div>
+    <div id="ec-line" class="clip" data-start="0" data-duration="3.4">No cloud. No account. Just your Wi-Fi.</div>
+    <div id="ec-cta" class="clip" data-start="0" data-duration="3.4">Windows 11 PC  ·  Android 10 or newer</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#ec-mark", { scale: 0, rotation: -90 }, { scale: 1, rotation: 0, duration: 0.55, ease: "back.out(1.7)" }, 0.05);
+    tl.fromTo("#ec-word", { clipPath: "inset(0 100% 0 0)", x: -20 }, { clipPath: "inset(0 0% 0 0)", x: 0, duration: 0.5, ease: "power3.out" }, 0.45);
+    tl.fromTo("#ec-line", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: "power3.out" }, 0.9);
+    tl.fromTo("#ec-cta", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: "power3.out" }, 1.2);
+    window.__timelines["endcard"] = tl;
+  </script>
+</template>

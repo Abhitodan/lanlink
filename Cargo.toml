@@ -1,0 +1,67 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/lanlink-protocol",
+    "crates/lanlink-auth",
+    "crates/lanlink-transport",
+    "crates/lanlink-discovery",
+    "crates/lanlink-client",
+    "host/capture-windows",
+    "host/encoder",
+    "host/input-windows",
+    "host/session-manager",
+    "host/dev-host",
+    "host/app",
+    "android/native-bridge",
+    "tests/integration",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.85"
+publish = false
+
+[workspace.dependencies]
+lanlink-protocol = { path = "crates/lanlink-protocol" }
+lanlink-auth = { path = "crates/lanlink-auth" }
+lanlink-transport = { path = "crates/lanlink-transport" }
+lanlink-discovery = { path = "crates/lanlink-discovery" }
+lanlink-client = { path = "crates/lanlink-client" }
+capture-windows = { path = "host/capture-windows" }
+encoder = { path = "host/encoder" }
+input-windows = { path = "host/input-windows" }
+session-manager = { path = "host/session-manager" }
+
+tokio = { version = "1.44", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
+quinn = { version = "0.11.12", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+rustls = { version = "0.23.20", default-features = false, features = ["ring", "std"] }
+rcgen = { version = "0.13.2", default-features = false, features = ["ring", "pem"] }
+ring = "0.17.14"
+spake2 = "0.4.0"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "ansi"] }
+mdns-sd = { version = "0.21", default-features = false, features = ["async"] }
+if-addrs = "0.15"
+qrcode = { version = "0.14", default-features = false }
+proptest = "1"
+windows = "0.61"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+debug = "line-tables-only"
+panic = "abort"
+
+# The Android library is size-sensitive and shipped stripped (symbols are kept
+# in the unstripped copy under target/ for crash symbolication).
+[profile.release-android]
+inherits = "release"
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+strip = "debuginfo"
+panic = "unwind"

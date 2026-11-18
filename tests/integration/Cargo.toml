@@ -1,0 +1,20 @@
+[package]
+name = "lanlink-integration-tests"
+description = "End-to-end tests: real host pipeline + real client over loopback QUIC"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+lanlink-protocol.workspace = true
+lanlink-auth.workspace = true
+lanlink-client.workspace = true
+session-manager.workspace = true
+input-windows.workspace = true
+capture-windows.workspace = true
+encoder.workspace = true
+tokio = { workspace = true, features = ["test-util"] }

@@ -1,0 +1,26 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; background: #15181c; font-family: "Inter", sans-serif; overflow: hidden; }
+    #hook-pc { position: absolute; left: 110px; top: 250px; width: 1020px; border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,.55); }
+    #hook-phone { position: absolute; left: 1380px; top: 150px; height: 860px; border-radius: 34px; border: 6px solid #2d3239; box-shadow: 0 30px 80px rgba(0,0,0,.55); }
+    .hook-line { position: absolute; left: 110px; top: 92px; font-size: 76px; font-weight: 700; letter-spacing: -0.02em; color: #e9e6df; }
+    #hook-b { color: #d9b98c; }
+  </style>
+  <div id="root" data-composition-id="hook" data-width="1920" data-height="1080">
+    <img id="hook-pc" class="clip" data-start="0" data-duration="4" src="assets/host-home.png" alt="LANLink on the PC" />
+    <img id="hook-phone" class="clip" data-start="0" data-duration="4" src="assets/phone-home.png" alt="LANLink on the phone" />
+    <div id="hook-a" class="hook-line clip" data-start="0" data-duration="2">Your PC is over there.</div>
+    <div id="hook-b" class="hook-line clip" data-start="2" data-duration="2">Your phone is right here.</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    // Frame 0 is already a full picture (it is the thumbnail).
+    tl.fromTo("#hook-pc", { x: -40 }, { x: 0, duration: 1.2, ease: "power2.out" }, 0);
+    tl.fromTo("#hook-a", { opacity: 1 }, { opacity: 1, duration: 0.01 }, 0);
+    tl.fromTo("#hook-phone", { y: 1000 }, { y: 0, duration: 0.6, ease: "power3.out" }, 1.9);
+    tl.fromTo("#hook-b", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.35, ease: "power3.out" }, 2.0);
+    tl.to("#hook-pc", { x: -60, opacity: 0.35, duration: 0.6, ease: "power2.inOut" }, 2.0);
+    tl.to("#hook-phone", { x: -520, scale: 1.04, duration: 0.5, ease: "power3.in" }, 3.45);
+    window.__timelines["hook"] = tl;
+  </script>
+</template>

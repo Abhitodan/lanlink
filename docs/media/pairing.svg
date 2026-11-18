@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 430" width="1200" height="430" role="img" aria-label="Pairing and security: the PC opens a 2-minute window with a code, the phone proves it knows the code with SPAKE2 bound to both keys and the TLS session, both screens show the same 6-digit number, the PC user approves">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#D9B98C"/></marker>
+    <style>
+      .t{font-family:Segoe UI,Helvetica Neue,Arial,sans-serif;fill:#E9E6DF}
+      .s{font-family:Segoe UI,Helvetica Neue,Arial,sans-serif;fill:#A9AEB6;font-size:15px}
+      .n{font-family:Segoe UI,Helvetica Neue,Arial,sans-serif;fill:#15181C;font-size:18px;font-weight:700}
+      .card{fill:#1E2227;stroke:#2D3239;stroke-width:2}
+    </style>
+  </defs>
+  <rect width="1200" height="430" rx="24" fill="#15181C"/>
+  <text class="t" x="48" y="58" font-size="24" font-weight="600">Pairing: only you, only your PC</text>
+  <text class="s" x="48" y="86">Strangers on the same Wi-Fi can do nothing but try to pair, and only while the PC user has pairing open.</text>
+
+  <g transform="translate(48 120)">
+    <rect class="card" width="255" height="200" rx="14"/>
+    <circle cx="34" cy="36" r="17" fill="#D9B98C"/><text class="n" x="34" y="42" text-anchor="middle">1</text>
+    <text class="t" x="62" y="42" font-size="18" font-weight="600">PC opens pairing</text>
+    <text class="s" x="22" y="80">QR code + 8-digit code</text>
+    <text class="s" x="22" y="104">2 minutes, single use</text>
+    <text class="s" x="22" y="128">3 guesses in total, however</text>
+    <text class="s" x="22" y="150">many devices try at once</text>
+  </g>
+  <g transform="translate(330 120)">
+    <rect class="card" width="255" height="200" rx="14"/>
+    <circle cx="34" cy="36" r="17" fill="#D9B98C"/><text class="n" x="34" y="42" text-anchor="middle">2</text>
+    <text class="t" x="62" y="42" font-size="18" font-weight="600">Phone proves the code</text>
+    <text class="s" x="22" y="80">SPAKE2: the code is never sent</text>
+    <text class="s" x="22" y="104">bound to both device keys</text>
+    <text class="s" x="22" y="128">and to this TLS session, so a</text>
+    <text class="s" x="22" y="150">middleman cannot relay it</text>
+  </g>
+  <g transform="translate(612 120)">
+    <rect class="card" width="255" height="200" rx="14"/>
+    <circle cx="34" cy="36" r="17" fill="#D9B98C"/><text class="n" x="34" y="42" text-anchor="middle">3</text>
+    <text class="t" x="62" y="42" font-size="18" font-weight="600">Same number on both</text>
+    <text class="t" x="127" y="112" text-anchor="middle" font-size="40" font-family="Consolas,Menlo,monospace" letter-spacing="4">482 139</text>
+    <text class="s" x="22" y="150">the person at the PC compares</text>
+    <text class="s" x="22" y="172">and approves, or declines</text>
+  </g>
+  <g transform="translate(894 120)">
+    <rect class="card" width="258" height="200" rx="14"/>
+    <circle cx="34" cy="36" r="17" fill="#D9B98C"/><text class="n" x="34" y="42" text-anchor="middle">4</text>
+    <text class="t" x="62" y="42" font-size="18" font-weight="600">Trusted by key</text>
+    <text class="s" x="22" y="80">later: mutual TLS, the PC</text>
+    <text class="s" x="22" y="104">identity pinned on the phone</text>
+    <text class="s" x="22" y="128">revoke on the PC = cut off now</text>
+    <text class="s" x="22" y="150">keys kept in DPAPI / Keystore</text>
+  </g>
+  <path d="M303 220h22" stroke="#D9B98C" stroke-width="2.5" marker-end="url(#a)"/><path d="M585 220h22" stroke="#D9B98C" stroke-width="2.5" marker-end="url(#a)"/><path d="M867 220h22" stroke="#D9B98C" stroke-width="2.5" marker-end="url(#a)"/>
+  <text class="s" x="48" y="372">Also: handshakes from outside the local network are refused. The PC shows when it is being controlled and has an emergency stop.</text>
+  <text class="s" x="48" y="396">The phone hides the PC screen from screenshots and recents. A link that tries to pair the phone needs your confirmation.</text>
+</svg>

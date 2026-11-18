@@ -1,0 +1,2 @@
+LANLink puts your Windows PC on your Android phone over your own Wi-Fi: hardware H.264 video, a phone-sized keyboard with Ctrl, Alt and arrows, and pairing that only the person at the PC can approve.
+No cloud relay, no account. Round trip measured at 4-33 ms on a Pixel 10 Pro.

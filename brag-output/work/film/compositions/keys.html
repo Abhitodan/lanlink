@@ -1,0 +1,33 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; background: #15181c; font-family: "Inter", sans-serif; overflow: hidden; }
+    #ky-title { position: absolute; left: 160px; top: 130px; font-size: 80px; font-weight: 700; color: #e9e6df; letter-spacing: -0.02em; }
+    #ky-sub { position: absolute; left: 160px; top: 250px; font-size: 40px; color: #a9aeb6; width: 1500px; line-height: 1.35; }
+    #ky-board { position: absolute; left: 160px; top: 600px; width: 1600px; border-radius: 22px; box-shadow: 0 -10px 60px rgba(0,0,0,.5); }
+    .ky-hit { position: absolute; border-radius: 12px; background: #d9b98c; mix-blend-mode: screen; }
+    #ky-ctrl { left: 370px; top: 906px; width: 162px; height: 88px; }
+    #ky-c { left: 641px; top: 804px; width: 123px; height: 88px; }
+    #ky-chip { position: absolute; left: 1410px; top: 420px; padding: 18px 30px; border-radius: 16px; background: #1e2227; border: 2px solid #2d3239; font-size: 40px; font-weight: 700; color: #d9b98c; }
+  </style>
+  <div id="root" data-composition-id="keys" data-width="1920" data-height="1080">
+    <div id="ky-title" class="clip" data-start="0" data-duration="5">A keyboard made for a PC.</div>
+    <div id="ky-sub" class="clip" data-start="0" data-duration="5">Esc, Tab, Ctrl, Alt and arrows built in.</div>
+    <img id="ky-board" class="clip" data-start="0" data-duration="5" src="assets/keyboard.png" alt="LANLink compact keyboard" />
+    <div id="ky-ctrl" class="ky-hit clip" data-start="1.2" data-duration="1.4"></div>
+    <div id="ky-c" class="ky-hit clip" data-start="1.7" data-duration="0.6"></div>
+    <div id="ky-chip" class="clip" data-start="1.8" data-duration="3.2">Ctrl + C</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#ky-board", { y: 480 }, { y: 0, duration: 0.55, ease: "power3.out" }, 0);
+    tl.fromTo("#ky-title", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.35, ease: "power3.out" }, 0.2);
+    tl.fromTo("#ky-sub", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.35, ease: "power3.out" }, 0.45);
+    tl.fromTo("#ky-ctrl", { opacity: 0 }, { opacity: 0.55, duration: 0.08 }, 1.2);
+    tl.fromTo("#ky-c", { opacity: 0 }, { opacity: 0.55, duration: 0.08 }, 1.7);
+    tl.to("#ky-c", { opacity: 0, duration: 0.15 }, 2.15);
+    tl.to("#ky-ctrl", { opacity: 0, duration: 0.15 }, 2.4);
+    tl.fromTo("#ky-chip", { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.3, ease: "back.out(2)" }, 1.8);
+    tl.to("#ky-board", { y: 520, duration: 0.45, ease: "power3.in" }, 4.5);
+    window.__timelines["keys"] = tl;
+  </script>
+</template>

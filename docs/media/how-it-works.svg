@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" width="1200" height="520" role="img" aria-label="How LANLink works: the PC captures and hardware-encodes the screen, sends it over QUIC, the phone decodes it; touch and keys go back and are injected on the PC">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#D9B98C"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9DB6D6"/></marker>
+    <style>
+      .t{font-family:Segoe UI,Helvetica Neue,Arial,sans-serif;fill:#E9E6DF}
+      .s{font-family:Segoe UI,Helvetica Neue,Arial,sans-serif;fill:#A9AEB6;font-size:15px}
+      .h{font-size:22px;font-weight:600}
+      .box{fill:#1E2227;stroke:#2D3239;stroke-width:2}
+      .step{font-size:17px;font-weight:600}
+    </style>
+  </defs>
+  <rect width="1200" height="520" rx="24" fill="#15181C"/>
+  <text class="t h" x="48" y="58">Windows PC</text>
+  <text class="t h" x="900" y="58">Android phone</text>
+  <text class="s" x="48" y="84">lanlink-host (Rust)</text>
+  <text class="s" x="900" y="84">LANLink app (Kotlin + Rust)</text>
+
+  <rect class="box" x="48" y="110" width="250" height="78" rx="12"/>
+  <text class="t step" x="68" y="142">Capture</text>
+  <text class="s" x="68" y="166">Windows Graphics Capture</text>
+  <rect class="box" x="48" y="208" width="250" height="78" rx="12"/>
+  <text class="t step" x="68" y="240">Convert on the GPU</text>
+  <text class="s" x="68" y="264">BGRA to NV12, no CPU copy</text>
+  <rect class="box" x="48" y="306" width="250" height="78" rx="12"/>
+  <text class="t step" x="68" y="338">Hardware H.264</text>
+  <text class="s" x="68" y="362">Intel / NVIDIA / AMD encoder</text>
+  <rect class="box" x="48" y="414" width="250" height="78" rx="12"/>
+  <text class="t step" x="68" y="446">Inject input</text>
+  <text class="s" x="68" y="470">SendInput, keys always released</text>
+  <path d="M173 188v16" stroke="#D9B98C" stroke-width="2" marker-end="url(#a)"/><path d="M173 286v16" stroke="#D9B98C" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="380" y="150" width="440" height="270" rx="16" fill="none" stroke="#2D3239" stroke-width="2" stroke-dasharray="6 6"/>
+  <text class="t h" x="600" y="186" text-anchor="middle">Your Wi-Fi only</text>
+  <text class="s" x="600" y="210" text-anchor="middle">QUIC + TLS 1.3, both devices pinned by key</text>
+  <path d="M298 345 C340 345 340 268 400 268 L800 268 C860 268 860 150 896 150" fill="none" stroke="#D9B98C" stroke-width="3" marker-end="url(#a)"/>
+  <text class="t" x="600" y="256" text-anchor="middle" font-size="16">video (frames only when the screen changes)</text>
+  <path d="M900 345 C860 345 860 330 800 330 L400 330 C340 330 340 453 302 453" fill="none" stroke="#9DB6D6" stroke-width="3" marker-end="url(#b)"/>
+  <text class="t" x="600" y="318" text-anchor="middle" font-size="16">touch, trackpad, keys, text</text>
+  <text class="s" x="600" y="368" text-anchor="middle">pointer moves as datagrams, clicks and keys on an ordered stream</text>
+  <text class="s" x="600" y="392" text-anchor="middle">the text caret comes back so the view follows your typing</text>
+
+  <rect class="box" x="900" y="110" width="252" height="78" rx="12"/>
+  <text class="t step" x="920" y="142">Hardware decode</text>
+  <text class="s" x="920" y="166">MediaCodec to SurfaceView</text>
+  <rect class="box" x="900" y="208" width="252" height="78" rx="12"/>
+  <text class="t step" x="920" y="240">Zoom and follow</text>
+  <text class="s" x="920" y="264">view tracks the pointer / caret</text>
+  <rect class="box" x="900" y="306" width="252" height="78" rx="12"/>
+  <text class="t step" x="920" y="338">Gestures and keyboard</text>
+  <text class="s" x="920" y="362">trackpad, touch, compact keys</text>
+  <rect class="box" x="900" y="414" width="252" height="78" rx="12"/>
+  <text class="t step" x="920" y="446">Measured on a Pixel 10 Pro</text>
+  <text class="s" x="920" y="470">RTT 4-33 ms, decode p50 8-15 ms</text>
+  <path d="M1026 188v16" stroke="#D9B98C" stroke-width="2" marker-end="url(#a)"/><path d="M1026 286v16" stroke="#D9B98C" stroke-width="2" marker-end="url(#a)"/>
+</svg>

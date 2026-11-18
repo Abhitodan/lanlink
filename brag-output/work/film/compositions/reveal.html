@@ -1,0 +1,31 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; background: #15181c; font-family: "Inter", sans-serif; overflow: hidden; }
+    #rv-phone { position: absolute; left: 578px; top: 120px; height: 1700px; border-radius: 48px; border: 8px solid #2d3239; }
+    #rv-tap { position: absolute; left: 1153px; top: 412px; width: 80px; height: 80px; border-radius: 50%; border: 5px solid #d9b98c; }
+    #rv-cursor { position: absolute; left: 1262px; top: 576px; width: 64px; height: 64px; }
+    #rv-mark { position: absolute; left: 50%; top: 360px; width: 180px; height: 180px; margin-left: -90px; }
+    #rv-title { position: absolute; left: 0; right: 0; top: 590px; text-align: center; font-size: 96px; font-weight: 700; color: #e9e6df; letter-spacing: -0.02em; }
+    #rv-sub { position: absolute; left: 0; right: 0; top: 730px; text-align: center; font-size: 44px; color: #a9aeb6; }
+  </style>
+  <div id="root" data-composition-id="reveal" data-width="1920" data-height="1080">
+    <img id="rv-phone" class="clip" data-start="0" data-duration="1.6" src="assets/phone-home.png" alt="Studio PC, Connect" />
+    <div id="rv-tap" class="clip" data-start="0.8" data-duration="0.6"></div>
+    <svg id="rv-cursor" class="clip" data-start="0" data-duration="1.2" viewBox="0 0 24 24"><path d="M4 2l15 10-7 1.5L9 21z" fill="#e9e6df" stroke="#15181c" stroke-width="1.2"/></svg>
+    <img id="rv-mark" class="clip" data-start="1.6" data-duration="3" src="assets/logo.svg" alt="LANLink" />
+    <div id="rv-title" class="clip" data-start="1.6" data-duration="3">LANLink</div>
+    <div id="rv-sub" class="clip" data-start="1.6" data-duration="3">Your Windows PC, on your Android phone.</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#rv-phone", { x: -520, scale: 1.04 }, { x: 0, scale: 1, duration: 0.45, ease: "power3.out" }, 0);
+    tl.fromTo("#rv-cursor", { x: 260, y: 260, opacity: 0 }, { x: 0, y: 0, opacity: 1, duration: 0.45, ease: "power3.out" }, 0.1);
+    tl.to("#rv-cursor", { x: -80, y: -130, duration: 0.24, ease: "power2.inOut" }, 0.56);
+    tl.fromTo("#rv-tap", { scale: 0.3, opacity: 1 }, { scale: 1.6, opacity: 0, duration: 0.5, ease: "power2.out" }, 0.82);
+    tl.to("#rv-phone", { scale: 6, opacity: 0, transformOrigin: "623px 340px", duration: 0.45, ease: "power3.in" }, 1.12);
+    tl.fromTo("#rv-mark", { scale: 0.2, rotation: -40, opacity: 0 }, { scale: 1, rotation: 0, opacity: 1, duration: 0.5, ease: "back.out(1.6)" }, 1.6);
+    tl.fromTo("#rv-title", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: "power3.out" }, 1.75);
+    tl.fromTo("#rv-sub", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: "power3.out" }, 1.9);
+    window.__timelines["reveal"] = tl;
+  </script>
+</template>

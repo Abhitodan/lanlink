@@ -1,0 +1,28 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; background: #15181c; font-family: "Inter", sans-serif; overflow: hidden; }
+    #pr-phone { position: absolute; left: 110px; top: 70px; height: 1500px; border-radius: 44px; border: 8px solid #2d3239; }
+    #pr-title { position: absolute; left: 880px; top: 140px; width: 940px; font-size: 72px; font-weight: 700; color: #e9e6df; letter-spacing: -0.02em; line-height: 1.1; }
+    .pr-step { position: absolute; left: 880px; width: 960px; font-size: 38px; color: #e9e6df; display: flex; align-items: center; gap: 26px; }
+    .pr-n { flex: 0 0 64px; height: 64px; border-radius: 50%; background: #d9b98c; color: #15181c; font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 34px; }
+    #pr-s1 { top: 420px; } #pr-s2 { top: 530px; } #pr-s3 { top: 640px; } #pr-s4 { top: 750px; }
+  </style>
+  <div id="root" data-composition-id="pairing" data-width="1920" data-height="1080">
+    <img id="pr-phone" class="clip" data-start="0" data-duration="5" src="assets/phone-pair.png" alt="Pair with Studio PC?" />
+    <div id="pr-title" class="clip" data-start="0" data-duration="5">A link can't pair your phone on its own.</div>
+    <div id="pr-s1" class="pr-step clip" data-start="0" data-duration="5"><span class="pr-n">1</span><span>You confirm on the phone</span></div>
+    <div id="pr-s2" class="pr-step clip" data-start="0" data-duration="5"><span class="pr-n">2</span><span>The phone proves the PC's code (SPAKE2)</span></div>
+    <div id="pr-s3" class="pr-step clip" data-start="0" data-duration="5"><span class="pr-n">3</span><span>Both screens show the same number</span></div>
+    <div id="pr-s4" class="pr-step clip" data-start="0" data-duration="5"><span class="pr-n">4</span><span>The person at the PC says yes</span></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#pr-phone", { y: 300, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, ease: "power3.out" }, 0);
+    tl.fromTo("#pr-title", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: "power3.out" }, 0.25);
+    ["#pr-s1", "#pr-s2", "#pr-s3", "#pr-s4"].forEach((s, i) => {
+      tl.fromTo(s, { x: 40, opacity: 0 }, { x: 0, opacity: 1, duration: 0.3, ease: "power3.out" }, 0.8 + i * 0.4);
+    });
+    tl.to(["#pr-phone", "#pr-title", "#pr-s1", "#pr-s2", "#pr-s3", "#pr-s4"], { opacity: 0, duration: 0.3, ease: "power2.in" }, 4.65);
+    window.__timelines["pairing"] = tl;
+  </script>
+</template>

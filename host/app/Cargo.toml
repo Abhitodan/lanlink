@@ -1,0 +1,40 @@
+[package]
+name = "lanlink-host"
+description = "LANLink host for Windows: tray icon, window, pairing, approvals, control indicator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "lanlink-host"
+path = "src/main.rs"
+
+[dependencies]
+lanlink-protocol.workspace = true
+lanlink-auth.workspace = true
+lanlink-discovery.workspace = true
+session-manager.workspace = true
+capture-windows.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+qrcode.workspace = true
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow"] }
+tray-icon = "0.26"
+raw-window-handle = "0.6"
+
+[target.'cfg(windows)'.dependencies.windows]
+workspace = true
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_System_Time",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+]
