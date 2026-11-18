@@ -1598,8 +1598,11 @@ dependencies = [
 name = "lanlink-mobile"
 version = "0.1.0"
 dependencies = [
+ "lanlink-auth",
  "lanlink-client",
+ "lanlink-protocol",
  "lanlink-transport",
+ "quinn",
  "tokio",
 ]
 

@@ -11,3 +11,8 @@ publish.workspace = true
 lanlink-client.workspace = true
 lanlink-transport.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+lanlink-protocol.workspace = true
+lanlink-auth.workspace = true
+quinn.workspace = true

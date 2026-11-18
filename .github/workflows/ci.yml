@@ -20,7 +20,10 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Tests
-        run: cargo test --workspace -- --test-threads=1
+        # The GitHub Windows runner has no screen-capture device, so live capture
+        # and end-to-end tests run on a real PC via scripts/test-all.ps1.
+        # lanlink-mobile (including its fake-host integration test) is covered here.
+        run: cargo test --workspace --exclude lanlink-integration-tests -- --test-threads=1 --skip auto_backend_delivers_a_frame_of_the_right_size
 
   android:
     runs-on: ubuntu-latest
