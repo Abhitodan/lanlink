@@ -1,6 +1,6 @@
 import XCTest
 
-/// Walks the non-remote screens and keeps a screenshot of each, for the
+/// Walks the screens and keeps a screenshot of each, for the
 /// side-by-side check against the Android screens in docs/media.
 /// `-uiTestSeed` gives the app the fictional "Studio PC" in stores of its own.
 final class ScreensUITests: XCTestCase {
@@ -51,6 +51,20 @@ final class ScreensUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Settings"].firstMatch.waitForExistence(timeout: 10))
         app.buttons["Settings"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["STREAM QUALITY"].waitForExistence(timeout: 10))
+
+        // The pointer-mode chips and the sliders under them. An iPhone 16
+        // screen cannot hold both these and the key-size slider, so the
+        // controls take two screenshots.
+        dragToTop(app, app.staticTexts["TOUCH AND POINTER"])
+        XCTAssertTrue(app.buttons["Trackpad"].firstMatch.isHittable)
+        XCTAssertTrue(app.sliders.firstMatch.isHittable)
+        snap(app, "09b-settings-pointer")
+        // Framed like docs/media/phone-settings.png: Display, Keyboard and
+        // the key-size slider.
+        dragToTop(app, app.staticTexts["DISPLAY"])
+        XCTAssertTrue(app.staticTexts["Key size: 36 dp"].isHittable)
+        snap(app, "09-settings-controls")
+
         scrollUntilHittable(app, app.staticTexts["PRIVACY"])
         snap(app, "04-settings")
 
@@ -76,6 +90,41 @@ final class ScreensUITests: XCTestCase {
         fresh.launch()
         XCTAssertTrue(fresh.staticTexts["Your PC, in your hand."].waitForExistence(timeout: 30))
         snap(fresh, "07-onboarding")
+    }
+
+    /// The remote screen with LANLink's compact keyboard open, on a still
+    /// test frame (`-uiTestRemoteDemo`: no network).
+    @MainActor
+    func testRemoteKeyboard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestSeed", "-uiTestRemoteDemo"]
+        app.launch()
+
+        let show = app.buttons["Show keyboard"]
+        let tab = app.buttons["Show controls"]
+        XCTAssertTrue(show.waitForExistence(timeout: 30) || tab.exists)
+        // The rail slides away after 4 s without use; its tab brings it back.
+        var tries = 0
+        while !(show.exists && show.isHittable) && tries < 3 {
+            if tab.exists && tab.isHittable { tab.tap() }
+            _ = show.waitForExistence(timeout: 3)
+            tries += 1
+        }
+        show.tap()
+
+        let space = app.descendants(matching: .any)["Space"]
+        XCTAssertTrue(space.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["Ctrl"].exists)
+        XCTAssertTrue(app.buttons["Hide keyboard"].waitForExistence(timeout: 5))
+        snap(app, "08-remote-keyboard")
+    }
+
+    /// Drags `element` up to just under the page header, without a fling.
+    private func dragToTop(_ app: XCUIApplication, _ element: XCUIElement) {
+        if !element.exists { scrollUntilHittable(app, element) }
+        let from = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 150))
+        from.press(forDuration: 0.1, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.3)
     }
 
     private func scrollUntilHittable(_ app: XCUIApplication, _ element: XCUIElement) {
