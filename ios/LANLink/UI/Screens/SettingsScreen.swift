@@ -52,9 +52,8 @@ struct SettingsScreen: View {
 
     private var s: Settings { model.settings }
 
-    /// Applies the stream settings to a running session. The session's
-    /// `applyQuality()` arrives with RemoteSession (Task 10).
-    private func applyLive() {}
+    /// Applies the stream settings to a running session.
+    private func applyLive() { model.remote?.applyQuality() }
 
     var body: some View {
         Page(title: "Settings", onBack: { model.back() }) {

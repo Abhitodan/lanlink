@@ -21,7 +21,7 @@ final class AppModelTests: XCTestCase {
     @MainActor
     private func makeModel(
         _ name: String,
-        makeSession: @escaping (PairedHost, String?) -> SessionControl = { _, _ in PlaceholderSession() }
+        makeSession: @escaping (PairedHost, String?) -> SessionControl = { _, _ in RecordingSession() }
     ) -> (AppModel, Settings) {
         let settings = Settings(defaults: freshDefaults("test.appmodel.settings.\(name)"))
         let model = AppModel(

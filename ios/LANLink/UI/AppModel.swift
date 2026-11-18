@@ -27,17 +27,11 @@ enum PairState: Equatable {
     case failed(message: String)
 }
 
-/// What the model needs from a remote session. `RemoteSession` (Task 10)
-/// conforms to it.
+/// What the model needs from a remote session. `RemoteSession` conforms to
+/// it; tests pass a recorder.
 protocol SessionControl: AnyObject {
     func start()
     func stop()
-}
-
-/// Stands in for `RemoteSession` until Task 10 provides it: does nothing.
-final class PlaceholderSession: SessionControl {
-    func start() {}
-    func stop() {}
 }
 
 @MainActor
@@ -55,6 +49,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var sessionVersion = 0
     private(set) var session: SessionControl?
 
+    /// The live session for the remote and diagnostics screens (Kotlin's
+    /// `vm.session`); nil without one. Views re-read it on `sessionVersion`.
+    var remote: RemoteSession? { session as? RemoteSession }
+
     private var stack: [Screen] = []
     private var pairTask: Task<Void, Never>?
     private var pairHandle: Int64 = 0
@@ -64,13 +62,21 @@ final class AppModel: ObservableObject {
         repository: HostRepository = HostRepository(),
         identity: IdentityStore = IdentityStore(),
         discovery: Discovery? = nil,
-        makeSession: @escaping (PairedHost, String?) -> SessionControl = { _, _ in PlaceholderSession() }
+        makeSession: ((PairedHost, String?) -> SessionControl)? = nil
     ) {
         self.settings = settings
         self.repository = repository
         self.identity = identity
         self.discovery = discovery ?? Discovery()
-        self.makeSession = makeSession
+        if let makeSession {
+            self.makeSession = makeSession
+        } else {
+            self.makeSession = { host, address -> SessionControl in
+                RemoteSession(
+                    host: host, preferredAddress: address, settings: settings,
+                    hosts: repository, identity: identity)
+            }
+        }
         screen = settings.onboarded ? .home : .onboarding
         hosts = repository.all()
     }

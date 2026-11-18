@@ -36,7 +36,7 @@ struct AppRoot: View {
         case .settings:
             SettingsScreen(model: model)
         case .diagnostics:
-            DiagnosticsScreen(model: model, readout: nil)
+            LiveDiagnosticsScreen(model: model)
         case .security:
             SecurityScreen(model: model)
         }

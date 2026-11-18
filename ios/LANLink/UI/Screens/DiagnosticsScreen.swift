@@ -41,7 +41,7 @@ struct DiagnosticsReadout: Equatable {
 
 struct DiagnosticsScreen: View {
     @ObservedObject var model: AppModel
-    /// nil without a session. Task 10 feeds the live session state here.
+    /// nil without a session (see `LiveDiagnosticsScreen`).
     let readout: DiagnosticsReadout?
 
     var body: some View {
@@ -97,5 +97,32 @@ struct DiagnosticsScreen: View {
     private func mbps(_ kbps: Int) -> String { String(format: "%.1f Mb/s", Double(kbps) / 1000) }
     private func pair(_ p50: Float, _ p95: Float?) -> String {
         String(format: "%.1f / %.1f ms", p50, p95 ?? 0)
+    }
+}
+
+/// `DiagnosticsScreen` fed from the live session's state, as Kotlin
+/// collects `vm.session?.state`.
+struct LiveDiagnosticsScreen: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        if let session = model.remote {
+            SessionDiagnostics(model: model, session: session)
+        } else {
+            DiagnosticsScreen(model: model, readout: nil)
+        }
+    }
+}
+
+private struct SessionDiagnostics: View {
+    let model: AppModel
+    @ObservedObject var session: RemoteSession
+
+    var body: some View {
+        let st = session.state
+        DiagnosticsScreen(
+            model: model,
+            readout: DiagnosticsReadout(
+                diagnostics: st.diagnostics, reconnects: st.reconnects, encoder: st.encoder, capture: st.capture))
     }
 }
