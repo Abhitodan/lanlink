@@ -116,12 +116,12 @@ Status: **in progress, not merged.** The app builds and passes its automated tes
 | C header check (`scripts/check-ios-header.py`) | Passed |
 | Android `:app:testDebugUnitTest` and `:app:lintDebug` (workflow `CI`) | Passed |
 
-The Swift unit tests include twins of the Android core-logic tests (viewport, touch, trackpad cursor, compact keyboard, key map, display text, paired host), plus tests for the stores (including the Keychain attributes), discovery, the Annex-B parser and video decoder, the remote session, the privacy cover and key repeat. The decode path is tested with a small H.264 fixture on the simulator.
+The Swift unit tests include twins of the Android core-logic tests (viewport, touch, trackpad cursor, compact keyboard, key map, display text, paired host), plus tests for the stores (including the Keychain attributes), discovery, the Annex-B parser and video decoder, the remote session, the app-switcher privacy cover and key repeat. The "Screen recording is on" notice has no test. The decode path is tested with a small H.264 fixture on the simulator.
 
 ### Changes to shared and Android code made for the iPhone work
 
 * **Input sent right after a session binds is no longer dropped.** The client opens the input stream on demand instead of waiting for a change notification (`input_sent_immediately_after_bind_is_not_lost`). This is in the shared client crate, so it applies to Android and iOS.
-* **The stream is requested again after a reconnect.** Before this, a reconnect could stay on "Starting the stream…". Android (`RemoteSession.kt`) and iOS now request the stream once per connection. Covered by an iOS unit test and the Android unit tests; the Android debug build passes. It has not been re-checked on a physical Android phone since this change.
+* **The stream is requested again after a reconnect.** Before this, a reconnect could stay on "Starting the stream…". Android (`RemoteSession.kt`) and iOS now request the stream once per connection. Covered on iOS by a unit test (`RemoteSessionTests`, `SessionRequestGate`). On Android the same change is made, and the existing unit tests and the debug build pass, but no Android test exercises this path and it is not verified on a device.
 
 ### Differences from the Android app
 
