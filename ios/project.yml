@@ -1,0 +1,90 @@
+# XcodeGen spec for the LANLink iPhone app. Generate the project with
+# `xcodegen` in this folder (after scripts/build-ios-core.sh has produced
+# build/LanLinkCore.xcframework). LANLink.xcodeproj is generated, never
+# committed.
+name: LANLink
+
+options:
+  bundleIdPrefix: io.lanlink
+  developmentLanguage: en
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "16.0"
+
+settings:
+  base:
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    # Swift 5 language mode (not strict Swift 6 concurrency).
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SUPPORTS_MACCATALYST: NO
+    SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+    SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+
+targets:
+  LANLink:
+    type: application
+    platform: iOS
+    sources:
+      - path: LANLink
+        excludes:
+          - App/Info.plist
+    dependencies:
+      # Static library (Rust core); linked, never embedded.
+      - framework: build/LanLinkCore.xcframework
+        embed: false
+    settings:
+      base:
+        PRODUCT_NAME: LANLink
+        PRODUCT_BUNDLE_IDENTIFIER: io.lanlink.app
+        INFOPLIST_FILE: LANLink/App/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+
+  LANLinkTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: LANLinkTests
+    dependencies:
+      - target: LANLink
+      # Makes the LanLinkCore module visible when compiling
+      # `@testable import LANLink`; nothing extra is linked (the test bundle
+      # references no C symbols itself).
+      - framework: build/LanLinkCore.xcframework
+        embed: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.lanlink.app.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+  LANLinkUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: LANLinkUITests
+    dependencies:
+      - target: LANLink
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.lanlink.app.uitests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  LANLink:
+    build:
+      targets:
+        LANLink: all
+        LANLinkTests: [test]
+        LANLinkUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - LANLinkTests
+        - LANLinkUITests
+    archive:
+      config: Release
