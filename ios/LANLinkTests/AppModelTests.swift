@@ -86,11 +86,11 @@ final class AppModelTests: XCTestCase {
     func testBackFromRemoteEndsSession() {
         let recorder = RecordingSession()
         var made: [(PairedHost, String?)] = []
-        let (model, settings) = makeModel("remote") { host, address in
+        let (model, _) = makeModel("remote") { host, address in
             made.append((host, address))
             return recorder
         }
-        settings.onboarded = true
+        let before = model.screen
         let host = PairedHost(
             fingerprint: "5a3c9e17b2d84f60a1c7e9b35d2f8046c1e7a93b5d28f4061ac3e7b95d1f2a84",
             name: "Studio PC", addresses: ["192.168.1.20"], port: 47990, pairedAt: 1, lastConnected: 0)
@@ -106,7 +106,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.back())
         XCTAssertEqual(recorder.calls, ["start", "stop"])
         XCTAssertNil(model.session)
-        XCTAssertEqual(model.screen, .home)
+        XCTAssertEqual(model.screen, before)
     }
 }
 
