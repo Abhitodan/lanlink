@@ -1509,9 +1509,7 @@ name = "lanlink-android"
 version = "0.1.0"
 dependencies = [
  "jni 0.21.1",
- "lanlink-client",
- "lanlink-transport",
- "tokio",
+ "lanlink-mobile",
 ]
 
 [[package]]
@@ -1593,6 +1591,15 @@ dependencies = [
  "lanlink-client",
  "lanlink-protocol",
  "session-manager",
+ "tokio",
+]
+
+[[package]]
+name = "lanlink-mobile"
+version = "0.1.0"
+dependencies = [
+ "lanlink-client",
+ "lanlink-transport",
  "tokio",
 ]
 

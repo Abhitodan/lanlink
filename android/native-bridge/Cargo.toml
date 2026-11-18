@@ -12,7 +12,5 @@ name = "lanlink"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-lanlink-client.workspace = true
-lanlink-transport.workspace = true
-tokio.workspace = true
+lanlink-mobile.workspace = true
 jni = "0.21.1"

@@ -6,6 +6,7 @@ members = [
     "crates/lanlink-transport",
     "crates/lanlink-discovery",
     "crates/lanlink-client",
+    "crates/lanlink-mobile",
     "host/capture-windows",
     "host/encoder",
     "host/input-windows",
@@ -29,6 +30,7 @@ lanlink-auth = { path = "crates/lanlink-auth" }
 lanlink-transport = { path = "crates/lanlink-transport" }
 lanlink-discovery = { path = "crates/lanlink-discovery" }
 lanlink-client = { path = "crates/lanlink-client" }
+lanlink-mobile = { path = "crates/lanlink-mobile" }
 capture-windows = { path = "host/capture-windows" }
 encoder = { path = "host/encoder" }
 input-windows = { path = "host/input-windows" }

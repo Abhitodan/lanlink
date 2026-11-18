@@ -1,0 +1,13 @@
+[package]
+name = "lanlink-mobile"
+description = "Platform-neutral mobile bridge core (sessions, pairing, video, input) shared by the Android JNI and iOS C ABI layers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+lanlink-client.workspace = true
+lanlink-transport.workspace = true
+tokio.workspace = true
