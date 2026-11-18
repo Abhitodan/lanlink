@@ -31,8 +31,7 @@ struct AppRoot: View {
         case let .host(fingerprint):
             HostScreen(model: model, fingerprint: fingerprint)
         case .remote:
-            // RemoteScreen arrives with Task 11.
-            Page(title: "", onBack: { model.back() }) {}
+            RemoteScreen(model: model)
         case .settings:
             SettingsScreen(model: model)
         case .diagnostics:

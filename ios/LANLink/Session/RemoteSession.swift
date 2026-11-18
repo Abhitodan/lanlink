@@ -72,6 +72,10 @@ protocol RemoteInput: AnyObject {
     func text(_ t: String)
     func setTextInput(_ active: Bool)
     func releaseAll()
+    /// Sticky Ctrl/Alt/Shift/Win for the next key (compact keyboard, shortcut bar).
+    func toggleSticky(_ vk: Int)
+    /// Press keys in order and release in reverse (e.g. Alt+Tab).
+    func combo(vks: Int...)
 }
 
 extension RemoteInput {
