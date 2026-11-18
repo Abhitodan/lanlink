@@ -27,10 +27,15 @@ final class ScreensUITests: XCTestCase {
 
         // A pairing link only offers. (The deployment target is iOS 16.0;
         // the CI simulator is newer.)
+        // The link is opened through the system, as a tap in Safari would
+        // (XCUIApplication.open relaunches the app instead).
         guard #available(iOS 16.4, *) else {
             return XCTFail("opening a URL in a UI test needs iOS 16.4 or newer")
         }
-        app.open(URL(string: Self.link)!)
+        XCUIDevice.shared.system.open(URL(string: Self.link)!)
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let confirm = springboard.buttons["Open"]
+        if confirm.waitForExistence(timeout: 5) { confirm.tap() }
         XCTAssertTrue(app.staticTexts["Pair with Studio PC?"].waitForExistence(timeout: 15))
         snap(app, "02-offer")
         app.buttons["Cancel"].firstMatch.tap()
