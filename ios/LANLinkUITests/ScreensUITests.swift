@@ -104,16 +104,13 @@ final class ScreensUITests: XCTestCase {
         addTeardownBlock { XCUIDevice.shared.orientation = .portrait }
         app.launch()
 
+        // The rail slides away to its tab 4 s after the screen appears. Wait
+        // for that, then bring it back, so the tap never races the slide.
         let show = app.buttons["Show keyboard"]
         let tab = app.buttons["Show controls"]
-        XCTAssertTrue(show.waitForExistence(timeout: 30) || tab.exists)
-        // The rail slides away after 4 s without use; its tab brings it back.
-        var tries = 0
-        while !(show.exists && show.isHittable) && tries < 3 {
-            if tab.exists && tab.isHittable { tab.tap() }
-            _ = show.waitForExistence(timeout: 3)
-            tries += 1
-        }
+        XCTAssertTrue(tab.waitForExistence(timeout: 30), "the rail did not hide to its tab")
+        tab.tap()
+        XCTAssertTrue(show.waitForExistence(timeout: 5))
         show.tap()
 
         let space = app.descendants(matching: .any)["Space"]

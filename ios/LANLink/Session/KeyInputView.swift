@@ -19,6 +19,8 @@ final class KeyInputView: UIView, UIKeyInput {
     /// Physical keyboard keys while this view holds the keyboard; returns
     /// whether the key was sent to the PC.
     var onHardwareKey: ((UIPress, Bool) -> Bool)?
+    /// The keyboard went away (by the app or the system).
+    var onResign: (() -> Void)?
 
     // UITextInputTraits: no learning, no rewriting (see above).
     var autocorrectionType: UITextAutocorrectionType = .no
@@ -48,6 +50,12 @@ final class KeyInputView: UIView, UIKeyInput {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     override var canBecomeFirstResponder: Bool { true }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned { onResign?() }
+        return resigned
+    }
 
     /// Always true, so the keyboard's Backspace is delivered even before
     /// anything was typed here (the text being edited lives on the PC).

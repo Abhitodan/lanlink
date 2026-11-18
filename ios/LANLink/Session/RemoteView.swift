@@ -132,6 +132,11 @@ final class RemoteView: UIView, TouchActions, CursorSink {
         keyboard.onHardwareKey = { [weak self] press, down in
             self?.handleHardwareKey(press, down: down) ?? false
         }
+        // Whoever closes the keyboard, physical keys come back to this view.
+        keyboard.onResign = { [weak self] in
+            guard let self, self.window != nil else { return }
+            _ = self.becomeFirstResponder()
+        }
         addSubview(keyboard)
 
         privacy.host = self
@@ -155,6 +160,7 @@ final class RemoteView: UIView, TouchActions, CursorSink {
         interpreter.reset()
         active.removeAll()
         privacy.stop()
+        keyboard.onResign = nil
         if keyboard.isFirstResponder { _ = keyboard.resignFirstResponder() }
     }
 
@@ -541,10 +547,9 @@ final class RemoteView: UIView, TouchActions, CursorSink {
 
     func showKeyboard() { _ = keyboard.becomeFirstResponder() }
 
+    /// Physical keys come back to this view (`keyboard.onResign`).
     func hideKeyboard() {
         _ = keyboard.resignFirstResponder()
-        // Back to this view, so physical keys still reach the PC.
-        if window != nil { _ = becomeFirstResponder() }
     }
 
     /// Whether the phone's on-screen keyboard is attached right now.
