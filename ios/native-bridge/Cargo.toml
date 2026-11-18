@@ -1,0 +1,15 @@
+[package]
+name = "lanlink-ios"
+description = "C ABI bridge for the LANLink iOS app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "lanlink_ios"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+lanlink-mobile.workspace = true
