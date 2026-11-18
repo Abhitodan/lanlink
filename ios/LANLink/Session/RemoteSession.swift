@@ -29,6 +29,24 @@ struct SessionState: Equatable {
     var modifiers: Set<Int> = []
 }
 
+/// Decides when a display list starts the stream: once per connection,
+/// while the session is starting. The PC needs a new SessionStart on every
+/// connection; the display list itself is kept across reconnects so the UI
+/// does not flicker.
+struct SessionRequestGate {
+    private var requested = false
+
+    /// A new connection is up (first connect, reconnect, retry).
+    mutating func connectionStarted() { requested = false }
+
+    /// A display list arrived; true when the stream should be requested now.
+    mutating func onDisplays(phase: Phase) -> Bool {
+        guard !requested && phase == .starting else { return false }
+        requested = true
+        return true
+    }
+}
+
 /// Receives pointer state for the local cursor overlay (main thread).
 protocol CursorSink: AnyObject {
     func onCursorShape(bitmap: CGImage, hotX: Int, hotY: Int)
@@ -117,6 +135,7 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
     private var layer: AVSampleBufferDisplayLayer?
     private var pump: VideoPump?
     private var eventLoopDone: DispatchSemaphore?
+    private var requestGate = SessionRequestGate()
     private var cursorShapes: [Int64: CursorShape] = [:]
     private var lastShapeId: Int64 = -1
     private var lastCursorShape: CursorShape?
@@ -267,7 +286,11 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
     }
 
     private func onConnected(_ h: Int64) {
-        update { $0.phase = .starting; $0.message = nil }
+        update { s in
+            self.requestGate.connectionStarted()
+            s.phase = .starting
+            s.message = nil
+        }
         _ = try? Bridge.sendCapabilities(
             handle: h, maxW: Int32(caps.maxWidth), maxH: Int32(caps.maxHeight), maxFps: Int32(caps.maxFps),
             hardware: caps.hardware, lowLatency: caps.lowLatency,
@@ -358,9 +381,12 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
                 else { return true }
                 list.append(DisplayItem(id: id, name: name, width: w, height: ht, primary: primary))
             }
-            let firstList = current.displays.isEmpty
-            update { $0.displays = list }
-            if firstList && current.phase == .starting { requestSession(h) }
+            var request = false
+            update { s in
+                s.displays = list
+                request = self.requestGate.onDisplays(phase: s.phase)
+            }
+            if request { requestSession(h) }
         case "sessionStarted":
             guard let sid = e.long("sessionId"), let displayId = e.long("displayId") else { break }
             _ = try? Bridge.bindSession(handle: h, sessionId: sid)
