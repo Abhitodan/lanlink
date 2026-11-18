@@ -98,6 +98,10 @@ final class ScreensUITests: XCTestCase {
     func testRemoteKeyboard() {
         let app = XCUIApplication()
         app.launchArguments = ["-uiTestSeed", "-uiTestRemoteDemo"]
+        // The remote screen turns the interface sideways; turn the simulated
+        // phone too, as a user would, so the screenshot is upright.
+        XCUIDevice.shared.orientation = .landscapeLeft
+        addTeardownBlock { XCUIDevice.shared.orientation = .portrait }
         app.launch()
 
         let show = app.buttons["Show keyboard"]
