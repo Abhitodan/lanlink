@@ -146,7 +146,7 @@ final class RemoteViewTests: XCTestCase {
         let backspace = CompactLayout.rows(symbols: false, shifted: false)[0].last!
 
         let hold = keyboard.press(backspace) // never released by its gesture
-        clock.advance(by: 500) // the press, then one repeat at 400 ms
+        clock.advance(by: 420) // the press, then one repeat at 400 ms
         XCTAssertEqual(keys.count, 2)
         keyboard.releaseAll()
         clock.advance(by: 5000)
