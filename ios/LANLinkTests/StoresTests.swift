@@ -1,3 +1,4 @@
+import Security
 import XCTest
 @testable import LANLink
 
@@ -64,9 +65,59 @@ final class StoresTests: XCTestCase {
         let second = try store.get(deviceLabel: "Sam's iPhone")
         XCTAssertFalse(first.isEmpty)
         XCTAssertEqual(first, second)
+        // A second instance has no cache: this reads through the Keychain.
+        let other = IdentityStore(service: "io.lanlink.identity.tests")
+        XCTAssertEqual(try other.get(deviceLabel: "Sam's iPhone"), first)
         XCTAssertFalse(try store.fingerprint(deviceLabel: "Sam's iPhone").isEmpty)
         store.clear()
         let third = try store.get(deviceLabel: "Sam's iPhone")
         XCTAssertNotEqual(first, third)
+    }
+
+    func testPairedHostJsonKeys() throws {
+        let h = PairedHost(
+            fingerprint: "aa", name: "Sam's PC", addresses: ["192.168.1.50"],
+            port: 47990, pairedAt: 1, lastConnected: 2)
+        let data = try JSONEncoder().encode(h)
+        let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        XCTAssertEqual(Set(obj.keys), ["fp", "name", "addrs", "port", "pairedAt", "last"])
+        XCTAssertEqual(PairedHost.listFromJson(PairedHost.listToJson([h])), [h])
+    }
+
+    func testTouchKeepsSixAddressesNewestFirst() {
+        let repo = HostRepository(defaults: freshDefaults("test.hosts.cap"))
+        repo.put(PairedHost(
+            fingerprint: "aa", name: "Sam's PC", addresses: [], port: 47990,
+            pairedAt: 1, lastConnected: 1))
+        for n in 1...8 { repo.touch(fp: "aa", address: "192.168.1.\(n)") }
+        XCTAssertEqual(
+            repo.get("aa")!.addresses,
+            ["192.168.1.8", "192.168.1.7", "192.168.1.6", "192.168.1.5", "192.168.1.4", "192.168.1.3"])
+    }
+
+    func testSettingsStorageKeysAndClamps() {
+        let name = "test.settings.keys"
+        let d = freshDefaults(name)
+        let s = Settings(defaults: d)
+        s.allowScreenshots = true
+        XCTAssertTrue(d.bool(forKey: "allowShots"))
+        s.startZoom = 10
+        XCTAssertEqual(s.startZoom, 4)
+        s.startZoom = 0
+        XCTAssertEqual(s.startZoom, 1)
+        s.deviceName = String(repeating: "x", count: 60)
+        XCTAssertEqual(s.deviceName.count, 48)
+    }
+
+    func testKeychainAttributes() {
+        let store = IdentityStore(service: "io.lanlink.identity.tests")
+        let add = store.addAttributes(for: Data([1, 2, 3]))
+        XCTAssertEqual(add[kSecAttrService as String] as? String, "io.lanlink.identity.tests")
+        XCTAssertEqual(add[kSecAttrAccount as String] as? String, "identity")
+        XCTAssertEqual(add[kSecAttrSynchronizable as String] as? Bool, false)
+        XCTAssertEqual(
+            add[kSecAttrAccessible as String] as? String,
+            kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String)
+        XCTAssertEqual(IdentityStore.defaultService, "io.lanlink.identity")
     }
 }

@@ -22,7 +22,7 @@ final class IdentityStore {
         self.service = service
     }
 
-    private var baseQuery: [String: Any] {
+    var baseQuery: [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -42,20 +42,24 @@ final class IdentityStore {
         read[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
         let status = SecItemCopyMatching(read as CFDictionary, &item)
-        if status == errSecSuccess, let data = item as? Data, !data.isEmpty {
-            cached = data
-            return data
-        }
-        if status != errSecItemNotFound {
-            // Unreadable entry: drop it and start fresh, like Android does
-            // when its Keystore key is gone.
-            SecItemDelete(baseQuery as CFDictionary)
+        switch status {
+        case errSecSuccess:
+            if let data = item as? Data, !data.isEmpty {
+                cached = data
+                return data
+            }
+            // Read succeeded but the bytes are empty or not Data: corrupt.
+            // Replace it below.
+        case errSecItemNotFound:
+            break
+        default:
+            // Transient or unknown failure (e.g. device locked): never
+            // delete or regenerate, that would unpair every PC.
+            throw LANLinkError(message: "The identity could not be read (Keychain error \(status)).")
         }
 
         let id = try Bridge.generateIdentity(label: deviceLabel)
-        var add = baseQuery
-        add[kSecValueData as String] = id
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let add = addAttributes(for: id)
         var addStatus = SecItemAdd(add as CFDictionary, nil)
         if addStatus == errSecDuplicateItem {
             SecItemDelete(baseQuery as CFDictionary)
@@ -66,6 +70,14 @@ final class IdentityStore {
         }
         cached = id
         return id
+    }
+
+    /// Attributes used to store the identity blob.
+    func addAttributes(for id: Data) -> [String: Any] {
+        var add = baseQuery
+        add[kSecValueData as String] = id
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        return add
     }
 
     func fingerprint(deviceLabel: String) throws -> String {
