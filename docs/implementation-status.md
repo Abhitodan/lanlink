@@ -104,19 +104,19 @@ A multi-stage security audit was conducted across the protocol, pairing state ma
 
 Status: **in progress, not merged.** The app builds and passes its automated tests in CI. It has **not been run on a real iPhone** and has not controlled a real PC from an iPhone. Nothing in this section is a device result.
 
-### Verified in CI (GitHub runners, commit `3df172a`)
+### Verified in CI (GitHub runners, commit `a2c6010`)
 
 | Check | Result |
 |---|---|
-| `cargo test -p lanlink-mobile -p lanlink-ios` (workflow `ios`, run 44398845842, `macos-15`) | **16 passed** (the C-ABI crate and the shared mobile core) |
-| `cargo test --workspace` (workflow `CI`, run 44398845819, Windows runner) | **132 passed**, 3 ignored (excludes the integration-test crate and skips one capture test, see `ci.yml`) |
-| Xcode `LANLinkTests` (Swift unit tests, iPhone simulator, run 44398845842) | **70 passed**, 0 failures |
+| `cargo test -p lanlink-mobile -p lanlink-ios` (workflow `ios`, run 44409767479, `macos-15`) | **16 passed** (the C-ABI crate and the shared mobile core) |
+| `cargo test --workspace` (workflow `CI`, run 44409767529, Windows runner) | **132 passed**, 3 ignored (excludes the integration-test crate and skips one capture test, see `ci.yml`) |
+| Xcode `LANLinkTests` (Swift unit tests, iPhone simulator, run 44409767479) | **78 passed**, 0 failures |
 | Xcode `LANLinkUITests` (simulator, same run) | **2 passed**: `testScreens` (walks the screens and saves the screenshots shown in the README) and `testRemoteKeyboard` |
 | Device build (`generic/platform=iOS`, `CODE_SIGNING_ALLOWED=NO`) | Built, unsigned |
 | C header check (`scripts/check-ios-header.py`) | Passed |
 | Android `:app:testDebugUnitTest` and `:app:lintDebug` (workflow `CI`) | Passed |
 
-The Swift unit tests include twins of the Android core-logic tests (viewport, touch, trackpad cursor, compact keyboard, key map, display text, paired host), plus tests for the stores (including the Keychain attributes), discovery, the Annex-B parser and video decoder, the remote session, the app-switcher privacy cover and key repeat. The "Screen recording is on" notice has no test. The decode path is tested with a small H.264 fixture on the simulator.
+The Swift unit tests include twins of the Android core-logic tests (viewport, touch, trackpad cursor, compact keyboard, key map, display text, paired host), plus tests for the stores (including the Keychain attributes), discovery, the Annex-B parser and video decoder, the remote session (including connection epochs, so a trip to the background while connecting cannot leave a second connection open: `testStaleEpochHandleIsClosed`, `testSecondHandleIsClosed`, `testCurrentEpochIsAcceptedUnlessStopped`; and sticky modifiers cleared by `releaseAll()` and `stop()`: `testReleaseAllAndStopClearStickyModifiers`), the Local Network denial messages (`testConnectErrorPointsToLocalNetworkWhenDenied`, `testPairErrorPointsToLocalNetworkWhenDenied`, `testDenialSurvivesStop`, `testDeniedNoteNamesTheSettingAndOffersNoWorkaround`), the app-switcher privacy cover and key repeat. The "Screen recording is on" notice has no test. The decode path is tested with a small H.264 fixture on the simulator.
 
 ### Changes to shared and Android code made for the iPhone work
 
