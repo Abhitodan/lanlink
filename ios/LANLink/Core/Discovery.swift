@@ -19,12 +19,53 @@ enum DiscoveryStatus: Equatable {
     case localNetworkDenied
 }
 
+/// What the app says when Local Network access is denied (iOS only, spec
+/// §5). Finding, pairing (QR code or address) and connecting all need the
+/// local network, so no way around the permission is offered.
+enum LocalNetworkText {
+    static let settingsPath = "Settings › Privacy & Security › Local Network › LANLink"
+
+    /// The Home note while discovery reports the denial.
+    static let homeNote = "LANLink needs Local Network access to find your PCs, pair with them and connect. "
+        + "Pairing by QR code or by address needs it too. Turn it on in \(settingsPath)."
+
+    /// The pairing or connect error when the PC cannot be reached.
+    static func cannotReach(_ who: String) -> String {
+        "Cannot reach \(who). LANLink needs Local Network access. Turn it on in \(settingsPath)."
+    }
+}
+
+/// A Bool that any thread can read and write.
+final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    var isSet: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func set(_ v: Bool) {
+        lock.lock()
+        value = v
+        lock.unlock()
+    }
+}
+
 /// Browses `_lanlink._udp` with `NWBrowser` while the host list is visible
 /// and stops when it is not. Mirrors android/.../core/Discovery.kt.
 @MainActor
 final class Discovery: ObservableObject {
     @Published private(set) var hosts: [FoundHost] = []
     @Published private(set) var status: DiscoveryStatus = .idle
+
+    /// The last browse reported that Local Network access is denied. Unlike
+    /// `status`, this survives `stop()` (Home stops browsing when the Pair
+    /// or remote screen opens), so pairing and connect errors can point to
+    /// the permission. It is cleared when a browse works again. Any thread.
+    nonisolated var localNetworkDenied: Bool { deniedFlag.isSet }
+    private nonisolated let deniedFlag = LockedFlag()
 
     private static let serviceType = "_lanlink._udp"
     private static let resolveTimeout: TimeInterval = 4
@@ -142,14 +183,17 @@ final class Discovery: ObservableObject {
         switch state {
         case .ready:
             status = .searching
+            noteAccess(denied: false)
         case .waiting(let e):
             // Waiting recovers on its own (for example once permission is
             // granted), so keep the browser; only a denial is surfaced.
             let s = Self.status(for: e)
             status = (s == .localNetworkDenied) ? s : .searching
+            if s == .localNetworkDenied { noteAccess(denied: true) }
         case .failed(let e):
             // Forget the failed browser so the next start() retries.
             status = Self.status(for: e)
+            if status == .localNetworkDenied { noteAccess(denied: true) }
             b.cancel()
             browser = nil
             cancelResolves()
@@ -157,6 +201,11 @@ final class Discovery: ObservableObject {
         default:
             break
         }
+    }
+
+    /// Records whether the last browse showed Local Network access denied.
+    func noteAccess(denied: Bool) {
+        deniedFlag.set(denied)
     }
 
     // MARK: Results

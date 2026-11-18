@@ -47,6 +47,40 @@ struct SessionRequestGate {
     }
 }
 
+/// What a connect loop does with the native handle it just opened.
+enum ConnectDecision: Equatable {
+    /// Publish it as the session's handle.
+    case accept
+    /// Not wanted: close it and end the loop.
+    case close
+}
+
+/// Connection epochs (final review I-1). `start()`, `retry()` and `stop()`
+/// each begin a new epoch. A connect loop, and the event loop and video pump
+/// that follow from it, carry the epoch they were started in and write
+/// nothing once it is no longer current. A trip to the background and back
+/// calls `stop()` and then `retry()` while the old loop can still be inside
+/// a blocking connect; without the epoch that loop would publish a second
+/// handle, or later fail the healthy connection.
+struct ConnectGate {
+    private(set) var epoch = 0
+
+    /// Begins a new epoch and returns it.
+    mutating func advance() -> Int {
+        epoch += 1
+        return epoch
+    }
+
+    func isCurrent(_ e: Int) -> Bool { e == epoch }
+
+    /// The loop of epoch `e` opened a handle. It may publish it only while
+    /// its epoch is current, the session is not stopped and no handle is
+    /// published yet; otherwise the new handle must be closed.
+    func decide(epoch e: Int, stopped: Bool, handle: Int64) -> ConnectDecision {
+        !stopped && isCurrent(e) && handle == 0 ? .accept : .close
+    }
+}
+
 /// Receives pointer state for the local cursor overlay (main thread).
 protocol CursorSink: AnyObject {
     func onCursorShape(bitmap: CGImage, hotX: Int, hotY: Int)
@@ -112,6 +146,9 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
     /// Highest refresh rate of the screen, Hz.
     private let refreshHz: Int
     private let caps = DecoderCaps.videoToolbox
+    /// True when Discovery saw that Local Network access is denied (any
+    /// thread). Connect errors then point to the permission.
+    private let localNetworkDenied: () -> Bool
 
     @Published private(set) var state: SessionState
 
@@ -140,6 +177,7 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
     private var pump: VideoPump?
     private var eventLoopDone: DispatchSemaphore?
     private var requestGate = SessionRequestGate()
+    private var connectGate = ConnectGate()
     private var cursorShapes: [Int64: CursorShape] = [:]
     private var lastShapeId: Int64 = -1
     private var lastCursorShape: CursorShape?
@@ -161,9 +199,11 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
     /// Call on the main thread (reads the screen and the device name).
     init(
         host: PairedHost, preferredAddress: String?, settings: Settings,
-        hosts: HostRepository, identity: IdentityStore
+        hosts: HostRepository, identity: IdentityStore,
+        localNetworkDenied: @escaping () -> Bool = { false }
     ) {
         self.host = host
+        self.localNetworkDenied = localNetworkDenied
         self.preferredAddress = preferredAddress
         self.settings = settings
         self.hosts = hosts
@@ -183,13 +223,22 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
     // MARK: - Lifecycle
 
     func start() {
-        locked { stopped = false }
-        spawn("lanlink-connect") { self.connectLoop(first: true) }
+        let e: Int = locked {
+            stopped = false
+            return connectGate.advance()
+        }
+        spawn("lanlink-connect") { self.connectLoop(first: true, epoch: e) }
     }
 
-    /// User ended the session.
+    /// User ended the session, or the app went to the background.
     func stop() {
+        // Sticky modifiers must not outlive the session (final review I-3):
+        // after a trip to the background, the next letter would become a
+        // shortcut on the PC.
+        clearSticky()
         let taken: (Int64, VideoPump?, DispatchSemaphore?)? = locked {
+            // Loops of the old epoch write nothing from now on.
+            _ = connectGate.advance()
             if stopped { return nil }
             stopped = true
             let result = (handle, pump, eventLoopDone)
@@ -220,7 +269,9 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
         return out
     }
 
-    private func connectLoop(first: Bool) {
+    /// `e` is the epoch this loop was started in; the loop ends, writing
+    /// nothing, as soon as it is no longer current.
+    private func connectLoop(first: Bool, epoch e: Int) {
         let deadline = Date().addingTimeInterval(first ? 15 : 60)
         var lastError = "The PC did not answer."
         var attempt = 0
@@ -228,30 +279,32 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
         // ids are public, so a LAN device can advertise itself as this PC;
         // that must not stop the real address from being tried.
         var impostors = Set<String>()
-        while !isStopped && Date() < deadline {
+        while isLive(e) && Date() < deadline {
             let candidates = addresses().filter { !impostors.contains($0) }
             if candidates.isEmpty {
-                fail(friendly(lastError))
+                fail(friendly(lastError), epoch: e)
                 return
             }
             for addr in candidates {
-                if isStopped { return }
+                if !isLive(e) { return }
                 do {
                     let id = try identity.get(deviceLabel: deviceName)
                     let h = try Bridge.connect(
                         identity: id, deviceName: deviceName, deviceModel: deviceModel,
                         host: addr, port: Int32(clamping: host.port), fingerprintHex: host.fingerprint)
-                    let accepted: Bool = locked {
-                        if stopped { return false }
-                        handle = h
-                        return true
+                    let decision: ConnectDecision = locked {
+                        let d = connectGate.decide(epoch: e, stopped: stopped, handle: handle)
+                        if d == .accept { handle = h }
+                        return d
                     }
-                    if !accepted {
+                    if decision == .close {
+                        // A newer loop owns the session (or it was stopped):
+                        // this connection must not stay open on the PC.
                         Bridge.close(handle: h)
                         return
                     }
                     hosts.touch(fp: host.fingerprint, address: addr)
-                    onConnected(h)
+                    onConnected(h, epoch: e)
                     return
                 } catch {
                     lastError = (error as? LANLinkError)?.message ?? error.localizedDescription
@@ -262,7 +315,7 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
                     // Only the real PC can say this: the connection already
                     // checked its pinned identity.
                     if lastError.contains("not paired") {
-                        fail(friendly(lastError))
+                        fail(friendly(lastError), epoch: e)
                         return
                     }
                 }
@@ -270,41 +323,58 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
             attempt += 1
             Thread.sleep(forTimeInterval: attempt < 3 ? 0.7 : 1.5)
         }
-        if !isStopped { fail(friendly(lastError)) }
+        fail(friendly(lastError), epoch: e)
     }
 
     private func friendly(_ e: String) -> String {
+        Self.friendlyConnectError(e, hostName: host.name, localNetworkDenied: localNetworkDenied())
+    }
+
+    /// The message shown when connecting fails. With Local Network access
+    /// denied (iOS only), every failure that is not an answer from the PC
+    /// points to the permission: without it the phone cannot reach any LAN
+    /// address, and Wi-Fi or the firewall are not the cause.
+    static func friendlyConnectError(_ e: String, hostName: String, localNetworkDenied: Bool) -> String {
         if e.contains("identity mismatch") {
             return "This is not the PC you paired with. If the PC was reinstalled, remove it and pair again."
         }
         if e.contains("not paired") { return "The PC no longer trusts this phone. Pair again from the PC." }
+        if localNetworkDenied { return LocalNetworkText.cannotReach(hostName) }
         if e.contains("did not answer") || e.range(of: "timed out", options: .caseInsensitive) != nil {
-            return "Cannot reach \(host.name). Check that both devices are on the same Wi-Fi, that LANLink is running on the PC, and that Windows Firewall allows it."
+            return "Cannot reach \(hostName). Check that both devices are on the same Wi-Fi, that LANLink is running on the PC, and that Windows Firewall allows it."
         }
         return e
     }
 
-    private func fail(_ msg: String) {
+    /// Shows a failure, unless epoch `e` is no longer current.
+    private func fail(_ msg: String, epoch e: Int) {
+        guard update(epoch: e, { $0.phase = .failed; $0.message = msg }) else { return }
         stopDecoder()
-        update { $0.phase = .failed; $0.message = msg }
     }
 
-    private func onConnected(_ h: Int64) {
-        update { s in
+    private func onConnected(_ h: Int64, epoch e: Int) {
+        let accepted = update(epoch: e) { s in
             self.requestGate.connectionStarted()
             s.phase = .starting
             s.message = nil
         }
+        // stop() took the handle in the meantime and closes it.
+        guard accepted else { return }
         _ = try? Bridge.sendCapabilities(
             handle: h, maxW: Int32(caps.maxWidth), maxH: Int32(caps.maxHeight), maxFps: Int32(caps.maxFps),
             hardware: caps.hardware, lowLatency: caps.lowLatency,
             displayW: Int32(clamping: screen.long), displayH: Int32(clamping: screen.short),
             refreshMilliHz: Int32(clamping: refreshHz * 1000))
-        update { $0.diagnostics.decoder = self.caps.name }
+        update(epoch: e) { $0.diagnostics.decoder = self.caps.name }
         let done = DispatchSemaphore(value: 0)
-        locked { eventLoopDone = done }
+        let live: Bool = locked {
+            guard connectGate.isCurrent(e) && handle == h else { return false }
+            eventLoopDone = done
+            return true
+        }
+        guard live else { return }
         spawn("lanlink-events") {
-            self.eventLoop(h)
+            self.eventLoop(h, epoch: e)
             done.signal()
         }
         DispatchQueue.main.async { self.maybeStartDecoder() }
@@ -341,21 +411,24 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
 
     // MARK: - Events
 
-    private func eventLoop(_ h: Int64) {
-        while !isStopped && currentHandle == h {
+    /// Runs while epoch `epoch` is current and `h` is the session's handle.
+    private func eventLoop(_ h: Int64, epoch: Int) {
+        while isLive(epoch) && currentHandle == h {
             let json: String?
             do {
                 json = try Bridge.pollEvent(handle: h, timeoutMs: 250)
             } catch {
-                onClosed(h, reason: (error as? LANLinkError)?.message ?? "connection lost")
+                onClosed(h, reason: (error as? LANLinkError)?.message ?? "connection lost", epoch: epoch)
                 return
             }
+            // The session may have been stopped during the poll.
+            if !isLive(epoch) { return }
             // A malformed event is ignored, never fatal.
             if let json, let data = json.data(using: .utf8),
                let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
-                if !handleEvent(h, Event(o)) { return }
+                if !handleEvent(h, Event(o), epoch: epoch) { return }
             }
-            maybeSendStats(h)
+            maybeSendStats(h, epoch: epoch)
         }
     }
 
@@ -373,8 +446,9 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
         func optString(_ k: String) -> String { string(k) ?? "" }
     }
 
-    /// Returns false when the connection is gone.
-    private func handleEvent(_ h: Int64, _ e: Event) -> Bool {
+    /// Returns false when the connection is gone. Writes nothing once
+    /// `epoch` is no longer current.
+    private func handleEvent(_ h: Int64, _ e: Event, epoch: Int) -> Bool {
         switch e.optString("type") {
         case "displays":
             guard let arr = e.o["displays"] as? [[String: Any]] else { break }
@@ -386,7 +460,7 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
                 list.append(DisplayItem(id: id, name: name, width: w, height: ht, primary: primary))
             }
             var request = false
-            update { s in
+            update(epoch: epoch) { s in
                 s.displays = list
                 request = self.requestGate.onDisplays(phase: s.phase)
             }
@@ -394,7 +468,7 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
         case "sessionStarted":
             guard let sid = e.long("sessionId"), let displayId = e.long("displayId") else { break }
             _ = try? Bridge.bindSession(handle: h, sessionId: sid)
-            update {
+            update(epoch: epoch) {
                 $0.phase = .streaming
                 $0.message = nil
                 $0.displayId = displayId
@@ -403,9 +477,9 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
                 $0.viewOnly = e.bool("viewOnly") ?? false
             }
         case "sessionEnded":
-            if !isStopped { update { $0.phase = .ended; $0.message = "The PC ended the session." } }
+            update(epoch: epoch) { $0.phase = .ended; $0.message = "The PC ended the session." }
         case "stats":
-            update {
+            update(epoch: epoch) {
                 $0.diagnostics.capturedFps = Float(e.optInt("capturedFpsX10")) / 10
                 $0.diagnostics.encodedFps = Float(e.optInt("encodedFpsX10")) / 10
                 $0.diagnostics.bitrateKbps = e.optInt("bitrateKbps")
@@ -419,6 +493,7 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
             }
         case "rtt":
             let p: VideoPump? = locked {
+                guard connectGate.isCurrent(epoch) else { return nil }
                 rttUs = e.optLong("rttUs")
                 offsetUs = e.optLong("offsetUs")
                 return pump
@@ -432,17 +507,21 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
                   let image = Self.cursorImage(px, width: w, height: ht)
             else { break }
             let entry: CursorShape = (image, hotX, hotY)
-            locked {
+            let live: Bool = locked {
+                guard connectGate.isCurrent(epoch) else { return false }
                 if cursorShapes.count > 32 { cursorShapes.removeAll() }
                 cursorShapes[id] = entry
                 lastShapeId = id
                 lastCursorShape = entry
+                return true
             }
+            guard live else { return false }
             DispatchQueue.main.async { self.cursorSink?.onCursorShape(bitmap: image, hotX: hotX, hotY: hotY) }
         case "cursor":
             guard let x = e.int("x"), let y = e.int("y"), let vis = e.bool("visible") else { break }
             let shapeId = e.long("shape") ?? -1
-            let cached: CursorShape? = locked {
+            let cached: CursorShape?? = locked {
+                guard connectGate.isCurrent(epoch) else { return nil }
                 var found: CursorShape?
                 if shapeId >= 0 && shapeId != lastShapeId, let s = cursorShapes[shapeId] {
                     lastShapeId = shapeId
@@ -450,8 +529,9 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
                     found = s
                 }
                 lastCursorPos = (x, y, vis)
-                return found
+                return .some(found)
             }
+            guard let cached else { return false }
             DispatchQueue.main.async {
                 if let s = cached { self.cursorSink?.onCursorShape(bitmap: s.image, hotX: s.hotX, hotY: s.hotY) }
                 self.cursorSink?.onCursorPosition(nx: x, ny: y, visible: vis)
@@ -463,7 +543,7 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
             DispatchQueue.main.async { self.cursorSink?.onCaret(visible: vis, x: x, y: y, w: w, h: ch) }
         case "notice":
             let msg = e.optString("message")
-            update { $0.notice = msg }
+            update(epoch: epoch) { $0.notice = msg }
             DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
                 self?.update { if $0.notice == msg { $0.notice = nil } }
             }
@@ -472,7 +552,7 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
             let msg = e.optString("message")
             // Session-level errors (busy, denied, capture failed) end the
             // attempt but keep the reason visible.
-            update {
+            update(epoch: epoch) {
                 if $0.phase == .streaming && code == 12 {
                     $0.notice = msg
                 } else {
@@ -481,7 +561,7 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
                 }
             }
         case "closed":
-            onClosed(h, reason: e.optString("message"))
+            onClosed(h, reason: e.optString("message"), epoch: epoch)
             return false
         default:
             break
@@ -490,10 +570,10 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
     }
 
     /// The event thread saw the connection end. Closes `h` unless `stop()`
-    /// took it first.
-    private func onClosed(_ h: Int64, reason: String) {
+    /// took it first. Reconnects within the same epoch.
+    private func onClosed(_ h: Int64, reason: String, epoch: Int) {
         let taken: VideoPump?? = locked {
-            if stopped || handle != h { return nil }
+            if stopped || handle != h || !connectGate.isCurrent(epoch) { return nil }
             handle = 0
             let running = pump
             pump = nil
@@ -507,22 +587,25 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
         let phase = current.phase
         if phase == .failed || phase == .ended { return }
         if reason.contains("stopped on the PC") || reason.contains("revoked") {
-            update {
+            update(epoch: epoch) {
                 $0.phase = .ended
                 $0.message = reason.contains("revoked") ? "The PC removed this phone." : "The session was stopped on the PC."
             }
             return
         }
         // Network blip, PC asleep, Wi-Fi switch: try to come back.
-        update {
+        let stillCurrent = update(epoch: epoch) {
             $0.phase = .reconnecting
             $0.message = "Connection lost. Reconnecting…"
             $0.reconnects += 1
         }
-        spawn("lanlink-reconnect") { self.connectLoop(first: false) }
+        // stop() ran in the meantime: no reconnect.
+        guard stillCurrent else { return }
+        spawn("lanlink-reconnect") { self.connectLoop(first: false, epoch: epoch) }
     }
 
-    private func maybeSendStats(_ h: Int64) {
+    private func maybeSendStats(_ h: Int64, epoch: Int) {
+        if !isLive(epoch) { return }
         let now = DispatchTime.now().uptimeNanoseconds / 1_000_000
         if now - lastStatsAt < 1000 { return }
         let dt: Float = lastStatsAt == 0 ? 1 : Float(now - lastStatsAt) / 1000
@@ -543,7 +626,7 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
             dropped: Int32(clamping: stats.dropped), queue: 0)
         let lat = stats.lastCaptureToDecodedUs
         let pipeline = stats.lastHostPipelineUs
-        update {
+        update(epoch: epoch) {
             $0.diagnostics.rttMs = rtt > 0 ? Float(rtt) / 1000 : nil
             $0.diagnostics.receivedFps = recFps
             $0.diagnostics.renderedFps = renFps
@@ -575,8 +658,9 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
     private func maybeStartDecoder() {
         let started: (VideoPump, Int64)? = locked {
             guard let l = layer, handle != 0, pump == nil, !stopped else { return nil }
+            let epoch = connectGate.epoch
             let p = VideoPump(handle: handle, layer: l, initialGeometry: videoGeometry) { [weak self] w, h, sw, sh in
-                self?.onVideoSize(width: w, height: h, sourceWidth: sw, sourceHeight: sh)
+                self?.onVideoSize(width: w, height: h, sourceWidth: sw, sourceHeight: sh, epoch: epoch)
             }
             p.setClockOffset(offsetUs)
             pump = p
@@ -589,10 +673,13 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
         _ = try? Bridge.decoderReset(handle: h)
     }
 
-    /// Pump thread.
-    private func onVideoSize(width: Int, height: Int, sourceWidth: Int, sourceHeight: Int) {
-        locked { videoGeometry = [width, height, sourceWidth, sourceHeight] }
-        update { $0.diagnostics.resolution = "\(width)×\(height)" }
+    /// Pump thread. A pump of an old epoch writes nothing.
+    private func onVideoSize(width: Int, height: Int, sourceWidth: Int, sourceHeight: Int, epoch: Int) {
+        let stillCurrent = update(epoch: epoch) { s in
+            self.videoGeometry = [width, height, sourceWidth, sourceHeight]
+            s.diagnostics.resolution = "\(width)×\(height)"
+        }
+        guard stillCurrent else { return }
         DispatchQueue.main.async {
             self.cursorSink?.onVideoGeometry(
                 width: width, height: height, sourceWidth: sourceWidth, sourceHeight: sourceHeight)
@@ -627,14 +714,16 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
     }
 
     func retry() {
-        let ok: Bool = locked {
-            if handle != 0 { return false }
+        let epoch: Int? = locked {
+            if handle != 0 { return nil }
             stopped = false
-            return true
+            // A connect loop still running from before (for example a
+            // reconnect when the app went to the background) is now stale.
+            return connectGate.advance()
         }
-        guard ok else { return }
+        guard let epoch else { return }
         update { $0.phase = .connecting; $0.message = nil }
-        spawn("lanlink-connect") { self.connectLoop(first: true) }
+        spawn("lanlink-connect") { self.connectLoop(first: true, epoch: epoch) }
     }
 
     // MARK: - Input
@@ -741,9 +830,24 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
         for vk in mods.reversed() { try Bridge.sendKey(handle: h, vk: Int32(vk), down: false) }
     }
 
+    /// Releases everything held on the PC and drops the sticky modifiers
+    /// (Android's `detachSurface` does both).
     func releaseAll() {
+        clearSticky()
         withHandle { try Bridge.releaseAll(handle: $0) }
     }
+
+    /// Drops the sticky modifiers without sending anything: they are only
+    /// pressed on the PC for the duration of one key or click.
+    private func clearSticky() {
+        update { s in
+            self.sticky.removeAll()
+            s.modifiers = []
+        }
+    }
+
+    /// The sticky modifiers in press order (tests).
+    var stickyModifiers: [Int] { locked { sticky } }
 
     // MARK: - Helpers
 
@@ -755,7 +859,8 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
 
     private var current: SessionState { locked { shadow } }
     private var currentHandle: Int64 { locked { handle } }
-    private var isStopped: Bool { locked { stopped } }
+    /// Epoch `e` is current and the session is not stopped.
+    private func isLive(_ e: Int) -> Bool { locked { !stopped && connectGate.isCurrent(e) } }
 
     /// Changes the state under the lock and publishes the result on the main
     /// thread. Versions keep the newest state when updates from several
@@ -767,6 +872,26 @@ final class RemoteSession: ObservableObject, SessionControl, RemoteInput {
             shadowVersion += 1
             return (shadow, shadowVersion)
         }
+        publish(snapshot, version)
+    }
+
+    /// `update` for the connect, event and pump threads: changes nothing
+    /// and returns false when epoch `e` is no longer current (the check and
+    /// the change happen under one lock).
+    @discardableResult
+    private func update(epoch e: Int, _ f: (inout SessionState) -> Void) -> Bool {
+        let changed: (SessionState, Int)? = locked {
+            guard connectGate.isCurrent(e) else { return nil }
+            f(&shadow)
+            shadowVersion += 1
+            return (shadow, shadowVersion)
+        }
+        guard let c = changed else { return false }
+        publish(c.0, c.1)
+        return true
+    }
+
+    private func publish(_ snapshot: SessionState, _ version: Int) {
         DispatchQueue.main.async { [weak self] in
             guard let self, version > self.appliedVersion else { return }
             self.appliedVersion = version

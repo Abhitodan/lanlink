@@ -82,6 +82,19 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(AppModel.friendlyPairError("something else"), "something else")
     }
 
+    /// Local Network denied (final review I-2): a pairing failure points to
+    /// the permission, not to Wi-Fi and the firewall.
+    func testPairErrorPointsToLocalNetworkWhenDenied() {
+        let denied = AppModel.friendlyPairError("the PC did not answer", localNetworkDenied: true)
+        XCTAssertTrue(denied.contains("Local Network"), denied)
+        XCTAssertTrue(denied.contains("Settings › Privacy & Security › Local Network › LANLink"), denied)
+        XCTAssertFalse(denied.contains("Firewall"), denied)
+        // An answer from the PC keeps its own message.
+        XCTAssertEqual(
+            AppModel.friendlyPairError("the pairing code is wrong", localNetworkDenied: true),
+            "The code was not accepted. Check the 8-digit code on the PC and try again.")
+    }
+
     @MainActor
     func testBackFromRemoteEndsSession() {
         let recorder = RecordingSession()

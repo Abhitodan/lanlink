@@ -60,12 +60,10 @@ struct HomeScreen: View {
                         + "You can still pair by scanning the QR code or entering the PC's address."
                 )
             } else if discovery.status == .localNetworkDenied {
-                // iOS only: Local Network access was refused.
-                Note(
-                    "LANLink is not allowed to look for PCs on this network. Turn on Local Network for LANLink "
-                        + "in Settings › Privacy & Security › Local Network. You can still pair by scanning the "
-                        + "QR code or entering the PC's address."
-                )
+                // iOS only: Local Network access was refused. Finding,
+                // pairing (QR code or address) and connecting all need it,
+                // so no way around it is offered.
+                Note(LocalNetworkText.homeNote)
             } else {
                 HStack(spacing: 0) {
                     ProgressView()

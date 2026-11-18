@@ -67,14 +67,16 @@ final class AppModel: ObservableObject {
         self.settings = settings
         self.repository = repository
         self.identity = identity
-        self.discovery = discovery ?? Discovery()
+        let discovery = discovery ?? Discovery()
+        self.discovery = discovery
         if let makeSession {
             self.makeSession = makeSession
         } else {
             self.makeSession = { host, address -> SessionControl in
                 RemoteSession(
                     host: host, preferredAddress: address, settings: settings,
-                    hosts: repository, identity: identity)
+                    hosts: repository, identity: identity,
+                    localNetworkDenied: { discovery.localNetworkDenied })
             }
         }
         screen = settings.onboarded ? .home : .onboarding
@@ -240,11 +242,15 @@ final class AppModel: ObservableObject {
                 if !lastError.contains("reach") && !lastError.contains("did not answer") { break }
             }
             guard let self, !Task.isCancelled else { return }
-            self.pair = .failed(message: Self.friendlyPairError(lastError))
+            self.pair = .failed(
+                message: Self.friendlyPairError(lastError, localNetworkDenied: self.discovery.localNetworkDenied))
         }
     }
 
-    nonisolated static func friendlyPairError(_ e: String) -> String {
+    /// With Local Network access denied (iOS only), a failure that is not
+    /// an answer from the PC points to the permission instead of Wi-Fi and
+    /// the firewall: QR and address pairing need the local network too.
+    nonisolated static func friendlyPairError(_ e: String, localNetworkDenied: Bool = false) -> String {
         if e.contains("wrong") {
             return "The code was not accepted. Check the 8-digit code on the PC and try again."
         }
@@ -261,6 +267,7 @@ final class AppModel: ObservableObject {
             return "That PC says it already knows this phone, but without its QR code LANLink cannot check "
                 + "that it is your PC. Scan the QR code on the PC instead."
         }
+        if localNetworkDenied { return LocalNetworkText.cannotReach("the PC") }
         if e.contains("did not answer") || e.contains("reach") {
             return "Cannot reach the PC. Make sure both are on the same Wi-Fi and Windows Firewall allows LANLink."
         }

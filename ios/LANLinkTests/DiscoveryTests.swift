@@ -21,6 +21,29 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertEqual(r.protocol, 0)
     }
 
+    /// Home stops browsing when Pair or the remote screen opens; the denial
+    /// must still be known there (final review I-2).
+    @MainActor
+    func testDenialSurvivesStop() {
+        let d = Discovery()
+        XCTAssertFalse(d.localNetworkDenied)
+        d.noteAccess(denied: true)
+        d.stop()
+        XCTAssertEqual(d.status, .idle)
+        XCTAssertTrue(d.localNetworkDenied)
+        d.noteAccess(denied: false)
+        XCTAssertFalse(d.localNetworkDenied)
+    }
+
+    /// The Home note names the setting and does not offer QR or address
+    /// pairing as a way around the permission.
+    func testDeniedNoteNamesTheSettingAndOffersNoWorkaround() {
+        let note = LocalNetworkText.homeNote
+        XCTAssertTrue(note.contains("Settings › Privacy & Security › Local Network › LANLink"), note)
+        XCTAssertFalse(note.contains("You can still pair"), note)
+        XCTAssertFalse(note.contains("still"), note)
+    }
+
     func testDeniedErrorMapsToLocalNetworkDenied() {
         let err = NWError.dns(DNSServiceErrorType(kDNSServiceErr_PolicyDenied))
         XCTAssertEqual(Discovery.status(for: err), .localNetworkDenied)
