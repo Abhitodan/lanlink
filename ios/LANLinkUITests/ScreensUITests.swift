@@ -93,15 +93,13 @@ final class ScreensUITests: XCTestCase {
     }
 
     /// The remote screen with LANLink's compact keyboard open, on a still
-    /// test frame (`-uiTestRemoteDemo`: no network).
+    /// test frame (`-uiTestRemoteDemo`: no network). The demo stays upright:
+    /// with the interface turned sideways by the app on a simulator held
+    /// upright, XCUITest returns a rotated, cropped screenshot.
     @MainActor
     func testRemoteKeyboard() {
         let app = XCUIApplication()
         app.launchArguments = ["-uiTestSeed", "-uiTestRemoteDemo"]
-        // The remote screen turns the interface sideways; turn the simulated
-        // phone too, as a user would, so the screenshot is upright.
-        XCUIDevice.shared.orientation = .landscapeLeft
-        addTeardownBlock { XCUIDevice.shared.orientation = .portrait }
         app.launch()
 
         // The rail slides away to its tab 4 s after the screen appears. Wait

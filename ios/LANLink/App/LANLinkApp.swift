@@ -51,6 +51,9 @@ enum UITestSeed {
     /// (`DemoRemoteSession`) in place of `RemoteSession`.
     static func makeRemoteDemoModel() -> AppModel {
         let seeded = makeModel(makeSession: { host, _ in DemoRemoteSession(host: host) })
+        // Upright, like docs/media/compact-keyboard.png (and XCUITest cannot
+        // capture an interface the app turned sideways on an upright simulator).
+        seeded.settings.landscape = false
         if let host = seeded.hosts.first { seeded.connect(host) }
         return seeded
     }
