@@ -420,12 +420,7 @@ pub extern "system" fn Java_com_lanlink_app_core_NativeBridge_nextVideo<'l>(
         let mut m = [0i64; 8];
         let ret = mobile::next_video(handle, buf, &mut m, timeout_ms)?;
         // Copy back exactly the entries each result defines.
-        let n = match ret {
-            mobile::VIDEO_TIMEOUT | mobile::VIDEO_CLOSED => 0,
-            mobile::VIDEO_CONFIG => 7,
-            mobile::VIDEO_BUFFER_SMALL => 1,
-            _ => 5,
-        };
+        let n = mobile::meta_len(ret);
         if n > 0 {
             env.set_long_array_region(&meta, 0, &m[..n])
                 .map_err(|e| e.to_string())?;

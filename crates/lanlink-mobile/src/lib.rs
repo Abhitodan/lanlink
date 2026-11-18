@@ -30,6 +30,7 @@ pub use session::{
     send_client_stats, set_stream_params, set_text_input, start_session,
 };
 pub use video::{
-    decoder_reset, next_video, now_us, request_keyframe, META_CODEC_CONFIG, META_DISCONTINUITY,
-    META_KEYFRAME, VIDEO_BUFFER_SMALL, VIDEO_CLOSED, VIDEO_CONFIG, VIDEO_TIMEOUT,
+    decoder_reset, meta_len, next_video, now_us, request_keyframe, META_CODEC_CONFIG,
+    META_DISCONTINUITY, META_KEYFRAME, VIDEO_BUFFER_SMALL, VIDEO_CLOSED, VIDEO_CONFIG,
+    VIDEO_TIMEOUT,
 };

@@ -1595,6 +1595,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "lanlink-ios"
+version = "0.1.0"
+dependencies = [
+ "lanlink-mobile",
+]
+
+[[package]]
 name = "lanlink-mobile"
 version = "0.1.0"
 dependencies = [

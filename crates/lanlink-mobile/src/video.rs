@@ -53,6 +53,17 @@ fn set_meta(meta: &mut [i64; 8], vals: &[i64]) {
     meta[..vals.len()].copy_from_slice(vals);
 }
 
+/// Number of leading `meta` entries that `next_video` defines for a given
+/// return code; the glue layers copy back exactly this many.
+pub fn meta_len(code: i32) -> usize {
+    match code {
+        VIDEO_TIMEOUT | VIDEO_CLOSED => 0,
+        VIDEO_CONFIG => 7,
+        VIDEO_BUFFER_SMALL => 1,
+        _ => 5,
+    }
+}
+
 /// Write the next decoder input into `buf`.
 ///
 /// Returns the byte count (> 0) and fills `meta` =
@@ -204,5 +215,27 @@ mod tests {
         assert!(parameter_sets(&[0, 0, 1, 0x41, 5]).is_empty());
         assert!(parameter_sets(&[]).is_empty());
         assert!(parameter_sets(&[0, 0, 1]).is_empty());
+    }
+
+    #[test]
+    fn meta_len_per_result() {
+        assert_eq!(meta_len(VIDEO_TIMEOUT), 0);
+        assert_eq!(meta_len(VIDEO_CLOSED), 0);
+        assert_eq!(meta_len(VIDEO_CONFIG), 7);
+        assert_eq!(meta_len(VIDEO_BUFFER_SMALL), 1);
+        assert_eq!(meta_len(0), 5);
+        assert_eq!(meta_len(1), 5);
+        assert_eq!(meta_len(65_536), 5);
+    }
+
+    #[test]
+    fn set_meta_zero_fills_and_lays_out_front() {
+        let mut m = [9i64; 8];
+        set_meta(&mut m, &[1, 2, 3]);
+        assert_eq!(m, [1, 2, 3, 0, 0, 0, 0, 0]);
+        set_meta(&mut m, &[]);
+        assert_eq!(m, [0; 8]);
+        set_meta(&mut m, &[1, 2, 3, 4, 5, 6, 7]);
+        assert_eq!(m, [1, 2, 3, 4, 5, 6, 7, 0]);
     }
 }
