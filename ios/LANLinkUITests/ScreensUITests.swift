@@ -25,7 +25,11 @@ final class ScreensUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Pair a PC"].firstMatch.exists)
         snap(app, "01-home")
 
-        // A pairing link only offers.
+        // A pairing link only offers. (The deployment target is iOS 16.0;
+        // the CI simulator is newer.)
+        guard #available(iOS 16.4, *) else {
+            return XCTFail("opening a URL in a UI test needs iOS 16.4 or newer")
+        }
         app.open(URL(string: Self.link)!)
         XCTAssertTrue(app.staticTexts["Pair with Studio PC?"].waitForExistence(timeout: 15))
         snap(app, "02-offer")
