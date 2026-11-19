@@ -89,8 +89,12 @@ class RemoteSession(
     private val _state = MutableStateFlow(SessionState(hostName = host.name))
     val state: StateFlow<SessionState> = _state
 
+    /** Guards [handle], [stopped] and [connectGate] together. Reads of the
+     *  volatile fields alone (input calls) need no lock. */
+    private val lock = Any()
     @Volatile private var handle = 0L
     @Volatile private var stopped = false
+    private val connectGate = ConnectGate()
     @Volatile private var surface: Surface? = null
     private var decoder: VideoDecoder? = null
     private var eventThread: Thread? = null
@@ -123,16 +127,23 @@ class RemoteSession(
     // ------------------------------------------------------------ lifecycle
 
     fun start() {
-        stopped = false
-        Thread({ connectLoop(first = true) }, "lanlink-connect").start()
+        val e = synchronized(lock) {
+            stopped = false
+            connectGate.advance()
+        }
+        Thread({ connectLoop(first = true, e) }, "lanlink-connect").start()
     }
 
     /** User ended the session. */
     fun stop() {
-        if (stopped) return
-        stopped = true
-        val h = handle
-        handle = 0
+        val h = synchronized(lock) {
+            // Loops of the old epoch write nothing from now on.
+            connectGate.advance()
+            if (stopped) return
+            stopped = true
+            clearCursorLocked()
+            handle.also { handle = 0 }
+        }
         Thread({
             if (h != 0L) {
                 runCatching { NativeBridge.releaseAll(h) }
@@ -142,17 +153,23 @@ class RemoteSession(
             }
         }, "lanlink-stop").start()
         stopDecoder()
+        _state.update { it.copy(phase = Phase.ENDED, message = null) }
+    }
+
+    /** Call under [lock]. */
+    private fun clearCursorLocked() {
         videoGeometry = null
         lastCursorShape = null
         lastCursorPos = null
         lastShapeId = -1L
-        _state.update { it.copy(phase = Phase.ENDED, message = null) }
     }
 
     private fun addresses(): List<String> =
         (listOfNotNull(preferredAddress) + host.addresses).distinct()
 
-    private fun connectLoop(first: Boolean) {
+    /** [e] is the epoch this loop was started in; the loop ends, writing
+     *  nothing, as soon as it is no longer current. */
+    private fun connectLoop(first: Boolean, e: Int) {
         val deadline = System.currentTimeMillis() + if (first) 15_000 else 60_000
         var lastError = "The PC did not answer."
         var attempt = 0
@@ -160,27 +177,36 @@ class RemoteSession(
         // ids are public, so a LAN device can advertise itself as this PC;
         // that must not stop the real address from being tried.
         val impostors = mutableSetOf<String>()
-        while (!stopped && System.currentTimeMillis() < deadline) {
+        while (isLive(e) && System.currentTimeMillis() < deadline) {
             val candidates = addresses().filter { it !in impostors }
             if (candidates.isEmpty()) {
-                fail(friendly(lastError))
+                fail(friendly(lastError), e)
                 return
             }
             for (addr in candidates) {
-                if (stopped) return
+                if (!isLive(e)) return
                 try {
                     val identity = app.identity.get(app.settings.deviceName)
                     val h = NativeBridge.connect(
                         identity, app.settings.deviceName, android.os.Build.MODEL ?: "Android",
                         addr, host.port, host.fingerprint,
                     )
-                    if (stopped) { NativeBridge.close(h); return }
-                    handle = h
+                    val decision = synchronized(lock) {
+                        connectGate.decide(e, stopped, handle).also {
+                            if (it == ConnectDecision.ACCEPT) handle = h
+                        }
+                    }
+                    if (decision == ConnectDecision.CLOSE) {
+                        // A newer loop owns the session (or it was stopped):
+                        // this connection must not stay open on the PC.
+                        runCatching { NativeBridge.close(h) }
+                        return
+                    }
                     app.hosts.touch(host.fingerprint, addr)
-                    onConnected(h)
+                    onConnected(h, e)
                     return
-                } catch (e: Exception) {
-                    lastError = e.message ?: lastError
+                } catch (ex: Exception) {
+                    lastError = ex.message ?: lastError
                     Log.i(TAG, "connect to $addr failed: $lastError")
                     if (lastError.contains("identity mismatch")) {
                         impostors += addr
@@ -189,7 +215,7 @@ class RemoteSession(
                     // Only the real PC can say this: the connection already
                     // checked its pinned identity.
                     if (lastError.contains("not paired")) {
-                        fail(friendly(lastError))
+                        fail(friendly(lastError), e)
                         return
                     }
                 }
@@ -197,8 +223,22 @@ class RemoteSession(
             attempt++
             Thread.sleep(if (attempt < 3) 700L else 1500L)
         }
-        if (!stopped) fail(friendly(lastError))
+        fail(friendly(lastError), e)
     }
+
+    /** Epoch [e] is current and the session is not stopped. */
+    private fun isLive(e: Int): Boolean = synchronized(lock) { !stopped && connectGate.isCurrent(e) }
+
+    private fun isCurrent(e: Int): Boolean = synchronized(lock) { connectGate.isCurrent(e) }
+
+    /** Changes the state only while epoch [e] is current. Returns false
+     *  (and changes nothing) for a stale loop. */
+    private inline fun updateIf(e: Int, f: (SessionState) -> SessionState): Boolean =
+        synchronized(lock) {
+            if (!connectGate.isCurrent(e)) return false
+            _state.update(f)
+            true
+        }
 
     private fun friendly(e: String): String = when {
         e.contains("identity mismatch") ->
@@ -209,13 +249,15 @@ class RemoteSession(
         else -> e
     }
 
-    private fun fail(msg: String) {
+    /** Shows a failure, unless epoch [e] is no longer current. */
+    private fun fail(msg: String, e: Int) {
+        if (!updateIf(e) { it.copy(phase = Phase.FAILED, message = msg) }) return
         stopDecoder()
-        _state.update { it.copy(phase = Phase.FAILED, message = msg) }
     }
 
-    private fun onConnected(h: Long) {
-        _state.update { it.copy(phase = Phase.STARTING, message = null) }
+    private fun onConnected(h: Long, e: Int) {
+        // stop() or a newer loop took over in the meantime.
+        if (!updateIf(e) { it.copy(phase = Phase.STARTING, message = null) }) return
         val caps = DecoderProbe.best()?.second
         val metrics = app.displayMetrics()
         runCatching {
@@ -225,8 +267,9 @@ class RemoteSession(
                 metrics.first, metrics.second, (app.refreshRateHz() * 1000).toInt(),
             )
         }
-        _state.update { it.copy(diagnostics = it.diagnostics.copy(decoder = caps?.name)) }
-        eventThread = Thread({ eventLoop(h) }, "lanlink-events").also { it.start() }
+        updateIf(e) { it.copy(diagnostics = it.diagnostics.copy(decoder = caps?.name)) }
+        if (!synchronized(lock) { connectGate.isCurrent(e) && handle == h }) return
+        eventThread = Thread({ eventLoop(h, e) }, "lanlink-events").also { it.start() }
         main.post { maybeStartDecoder() }
     }
 
@@ -254,31 +297,35 @@ class RemoteSession(
 
     // ------------------------------------------------------------ events
 
-    private fun eventLoop(h: Long) {
-        while (!stopped && handle == h) {
+    /** Runs while epoch [e] is current and [h] is the session's handle. */
+    private fun eventLoop(h: Long, e: Int) {
+        while (isLive(e) && handle == h) {
             val json = try {
                 NativeBridge.pollEvent(h, 250)
-            } catch (e: Exception) {
-                onClosed(h, e.message ?: "connection lost")
+            } catch (ex: Exception) {
+                onClosed(h, ex.message ?: "connection lost", e)
                 return
             }
+            if (!isLive(e)) return
             if (json != null) {
                 val o = runCatching { JSONObject(json) }.getOrNull() ?: continue
                 // A malformed event must not crash the app.
                 val keepGoing = try {
-                    handleEvent(h, o)
-                } catch (e: org.json.JSONException) {
-                    Log.w(TAG, "ignored malformed event: ${e.message}")
+                    handleEvent(h, o, e)
+                } catch (ex: org.json.JSONException) {
+                    Log.w(TAG, "ignored malformed event: ${ex.message}")
                     true
                 }
                 if (!keepGoing) return
             }
-            maybeSendStats(h)
+            maybeSendStats(h, e)
         }
     }
 
-    /** Returns false when the connection is gone. */
-    private fun handleEvent(h: Long, o: JSONObject): Boolean {
+    /** Returns false when the connection is gone, or when epoch [e] is no
+     *  longer current (a stale loop writes no state). */
+    private fun handleEvent(h: Long, o: JSONObject, e: Int): Boolean {
+        if (!isCurrent(e)) return false
         when (o.optString("type")) {
             "displays" -> {
                 val arr = o.getJSONArray("displays")
@@ -287,13 +334,13 @@ class RemoteSession(
                     DisplayItem(d.getLong("id"), d.getString("name"), d.getInt("width"), d.getInt("height"), d.getBoolean("primary"))
                 }
                 val firstList = _state.value.displays.isEmpty()
-                _state.update { it.copy(displays = list) }
+                updateIf(e) { it.copy(displays = list) }
                 if (firstList && _state.value.phase == Phase.STARTING) requestSession(h)
             }
             "sessionStarted" -> {
                 val sid = o.getLong("sessionId")
                 NativeBridge.bindSession(h, sid)
-                _state.update {
+                updateIf(e) {
                     it.copy(
                         phase = Phase.STREAMING, message = null,
                         displayId = o.getLong("displayId"),
@@ -303,11 +350,11 @@ class RemoteSession(
                 }
             }
             "sessionEnded" -> {
-                if (!stopped) _state.update { it.copy(phase = Phase.ENDED, message = "The PC ended the session.") }
+                if (!stopped) updateIf(e) { it.copy(phase = Phase.ENDED, message = "The PC ended the session.") }
             }
             "stats" -> {
                 val d = _state.value.diagnostics
-                _state.update {
+                updateIf(e) {
                     it.copy(
                         diagnostics = d.copy(
                             capturedFps = o.optInt("capturedFpsX10") / 10f,
@@ -347,21 +394,29 @@ class RemoteSession(
                         if (cursorShapes.size > 32) cursorShapes.clear()
                         cursorShapes[id] = entry
                     }
-                    lastShapeId = id
-                    lastCursorShape = entry
+                    synchronized(lock) {
+                        if (!connectGate.isCurrent(e)) return false
+                        lastShapeId = id
+                        lastCursorShape = entry
+                    }
                     main.post { cursorSink?.onCursorShape(entry.first, entry.second, entry.third) }
                 }
             }
             "cursor" -> {
                 val x = o.getInt("x"); val y = o.getInt("y"); val vis = o.getBoolean("visible")
                 val shapeId = o.optLong("shape", -1L)
-                val cachedShape = if (shapeId >= 0L && shapeId != lastShapeId) {
-                    synchronized(cursorShapes) { cursorShapes[shapeId] }?.also {
-                        lastShapeId = shapeId
-                        lastCursorShape = it
-                    }
+                val cached = if (shapeId >= 0L && shapeId != lastShapeId) {
+                    synchronized(cursorShapes) { cursorShapes[shapeId] }
                 } else null
-                lastCursorPos = Triple(x, y, vis)
+                synchronized(lock) {
+                    if (!connectGate.isCurrent(e)) return false
+                    if (cached != null) {
+                        lastShapeId = shapeId
+                        lastCursorShape = cached
+                    }
+                    lastCursorPos = Triple(x, y, vis)
+                }
+                val cachedShape = cached
                 main.post {
                     if (cachedShape != null) {
                         cursorSink?.onCursorShape(cachedShape.first, cachedShape.second, cachedShape.third)
@@ -376,50 +431,56 @@ class RemoteSession(
             }
             "notice" -> {
                 val msg = o.optString("message")
-                _state.update { it.copy(notice = msg) }
-                main.postDelayed({ _state.update { s -> if (s.notice == msg) s.copy(notice = null) else s } }, 6000)
+                updateIf(e) { it.copy(notice = msg) }
+                main.postDelayed({ updateIf(e) { s -> if (s.notice == msg) s.copy(notice = null) else s } }, 6000)
             }
             "error" -> {
                 val code = o.optInt("code")
                 val msg = o.optString("message")
                 // Session-level errors (busy, denied, capture failed) end the
                 // attempt but keep the reason visible.
-                _state.update {
+                updateIf(e) {
                     if (it.phase == Phase.STREAMING && code == 12) it.copy(notice = msg)
                     else it.copy(phase = Phase.FAILED, message = msg)
                 }
             }
             "closed" -> {
-                onClosed(h, o.optString("message"))
+                onClosed(h, o.optString("message"), e)
                 return false
             }
         }
         return true
     }
 
-    private fun onClosed(h: Long, reason: String) {
-        if (stopped || handle != h) return
-        handle = 0
-        videoGeometry = null
-        lastCursorShape = null
-        lastCursorPos = null
-        lastShapeId = -1L
+    /** The event thread saw the connection end. Closes [h] unless stop() or
+     *  a newer epoch took it first. Reconnects within the same epoch. */
+    private fun onClosed(h: Long, reason: String, e: Int) {
+        synchronized(lock) {
+            if (stopped || handle != h || !connectGate.isCurrent(e)) return
+            handle = 0
+            clearCursorLocked()
+        }
         runCatching { NativeBridge.close(h) }
         main.post { stopDecoder() }
         val phase = _state.value.phase
         if (phase == Phase.FAILED || phase == Phase.ENDED) return
         if (reason.contains("stopped on the PC") || reason.contains("revoked")) {
-            _state.update {
+            updateIf(e) {
                 it.copy(phase = Phase.ENDED, message = if (reason.contains("revoked")) "The PC removed this phone." else "The session was stopped on the PC.")
             }
             return
         }
         // Network blip, PC asleep, Wi-Fi switch: try to come back.
-        _state.update { it.copy(phase = Phase.RECONNECTING, message = "Connection lost. Reconnecting…", reconnects = it.reconnects + 1) }
-        Thread({ connectLoop(first = false) }, "lanlink-reconnect").start()
+        val stillCurrent = updateIf(e) {
+            it.copy(phase = Phase.RECONNECTING, message = "Connection lost. Reconnecting…", reconnects = it.reconnects + 1)
+        }
+        // stop() or retry() ran in the meantime: no reconnect from this epoch.
+        if (!stillCurrent) return
+        Thread({ connectLoop(first = false, e) }, "lanlink-reconnect").start()
     }
 
-    private fun maybeSendStats(h: Long) {
+    private fun maybeSendStats(h: Long, e: Int) {
+        if (!isLive(e)) return
         val now = System.currentTimeMillis()
         if (now - lastStatsAt < 1000) return
         val dt = if (lastStatsAt == 0L) 1f else (now - lastStatsAt) / 1000f
@@ -435,7 +496,7 @@ class RemoteSession(
             NativeBridge.sendClientStats(h, (recFps * 10).toInt(), (renFps * 10).toInt(), p50, p95, dec.stats.dropped.get().toInt(), 0)
         }
         val lat = dec.stats.lastCaptureToDecodedUs
-        _state.update {
+        updateIf(e) {
             it.copy(
                 diagnostics = it.diagnostics.copy(
                     rttMs = if (rttUs > 0) rttUs / 1000f else null,
@@ -527,10 +588,14 @@ class RemoteSession(
     }
 
     fun retry() {
-        if (handle != 0L) return
-        stopped = false
+        val e = synchronized(lock) {
+            if (handle != 0L) return
+            stopped = false
+            // A connect loop still running from before is now stale.
+            connectGate.advance()
+        }
         _state.update { it.copy(phase = Phase.CONNECTING, message = null) }
-        Thread({ connectLoop(first = true) }, "lanlink-connect").start()
+        Thread({ connectLoop(first = true, e) }, "lanlink-connect").start()
     }
 
     // ------------------------------------------------------------ input
