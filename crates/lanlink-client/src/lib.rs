@@ -769,12 +769,22 @@ async fn datagram_reader(
     }
 }
 
+/// Writes reliable input for the bound session.
+///
+/// The host keeps one input sequencer per session (not per stream) and
+/// closes the connection with "input sequence" on anything but the next
+/// number. So `seq` belongs to the session: it continues when the stream is
+/// reopened after a write error and restarts only when the session changes.
+/// A seq is used up only by a successful write; an event whose write failed
+/// was not read by the host (it had stopped the stream, or the connection
+/// is gone), so the next event takes its number.
 async fn input_writer(
     conn: quinn::Connection,
     mut rx: mpsc::Receiver<InputKind>,
     mut session: watch::Receiver<u32>,
 ) {
-    let mut stream: Option<(u32, u32, quinn::SendStream)> = None; // (session, seq, stream)
+    let mut stream: Option<(u32, quinn::SendStream)> = None; // (session, stream)
+    let mut seq = InputSeq::default();
     loop {
         tokio::select! {
             changed = session.changed() => {
@@ -782,8 +792,8 @@ async fn input_writer(
                 let id = *session.borrow();
                 // The stream for a new session is opened by the first input,
                 // so input sent right after `bind_session` is never lost.
-                if stream.as_ref().is_some_and(|(sid, _, _)| *sid != id) {
-                    if let Some((_, _, mut s)) = stream.take() { let _ = s.finish(); }
+                if stream.as_ref().is_some_and(|(sid, _)| *sid != id) {
+                    if let Some((_, mut s)) = stream.take() { let _ = s.finish(); }
                 }
             }
             kind = rx.recv() => {
@@ -791,8 +801,8 @@ async fn input_writer(
                 let id = *session.borrow();
                 // No session: there is nothing to send this to.
                 if id == 0 { continue; }
-                if stream.as_ref().is_some_and(|(sid, _, _)| *sid != id) {
-                    if let Some((_, _, mut s)) = stream.take() { let _ = s.finish(); }
+                if stream.as_ref().is_some_and(|(sid, _)| *sid != id) {
+                    if let Some((_, mut s)) = stream.take() { let _ = s.finish(); }
                 }
                 if stream.is_none() {
                     match conn.open_uni().await {
@@ -800,19 +810,46 @@ async fn input_writer(
                             if write_stream_kind(&mut s, StreamKind::Input).await.is_err() {
                                 continue;
                             }
-                            stream = Some((id, 0, s));
+                            stream = Some((id, s));
                         }
                         Err(_) => break,
                     }
                 }
-                let Some((sid, seq, s)) = stream.as_mut() else { continue };
-                *seq = seq.wrapping_add(1);
-                let ev = InputEvent { session_id: *sid, seq: *seq, kind };
-                if write_input(s, &ev).await.is_err() {
+                let Some((sid, s)) = stream.as_mut() else { continue };
+                let ev = InputEvent { session_id: *sid, seq: seq.next(*sid), kind };
+                if write_input(s, &ev).await.is_ok() {
+                    seq.sent(ev.session_id, ev.seq);
+                } else {
                     stream = None;
                 }
             }
         }
+    }
+}
+
+/// The reliable-input sequence of the bound session, kept across input
+/// stream reopens.
+#[derive(Debug, Default)]
+struct InputSeq {
+    session_id: u32,
+    last_sent: u32,
+}
+
+impl InputSeq {
+    /// The number for the next event of `session_id`: 1 for a new session,
+    /// otherwise one after the last successful write.
+    fn next(&self, session_id: u32) -> u32 {
+        if session_id == self.session_id {
+            self.last_sent.wrapping_add(1)
+        } else {
+            1
+        }
+    }
+
+    /// The event `seq` of `session_id` was written.
+    fn sent(&mut self, session_id: u32, seq: u32) {
+        self.session_id = session_id;
+        self.last_sent = seq;
     }
 }
 
@@ -833,5 +870,33 @@ impl std::fmt::Debug for Connection {
             .field("remote", &self.conn.remote_address())
             .field("session_id", &self.session_id())
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InputSeq;
+
+    #[test]
+    fn input_seq_is_per_session_and_used_only_by_successful_writes() {
+        let mut s = InputSeq::default();
+        assert_eq!(s.next(7), 1);
+        s.sent(7, 1);
+        assert_eq!(s.next(7), 2);
+        // The write of 2 failed and the stream is reopened: 2 is still next.
+        assert_eq!(s.next(7), 2);
+        s.sent(7, 2);
+        assert_eq!(s.next(7), 3);
+        // A new session restarts at 1, as the host's new sequencer expects.
+        assert_eq!(s.next(8), 1);
+        s.sent(8, 1);
+        assert_eq!(s.next(8), 2);
+    }
+
+    #[test]
+    fn input_seq_wraps() {
+        let mut s = InputSeq::default();
+        s.sent(7, u32::MAX);
+        assert_eq!(s.next(7), 0);
     }
 }

@@ -16,6 +16,7 @@ use lanlink_protocol::{
     StreamKind, VideoConfig,
 };
 use lanlink_transport::*;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -43,6 +44,10 @@ struct HostState {
     trust: Mutex<TrustStore>,
     window: Mutex<Option<PairingWindow>>,
     inputs: std_mpsc::Sender<InputEvent>,
+    /// When non-zero: after this many events on one input stream, stop
+    /// reading it (STOP_SENDING), as a host would on a stream it drops.
+    /// Reset to 0 once used.
+    stop_input_stream_after: AtomicUsize,
 }
 
 struct FakeHost {
@@ -66,6 +71,7 @@ impl FakeHost {
                 PairingWindow::with_code(PAIRING_CODE, Instant::now()).expect("window"),
             )),
             inputs: inputs_tx,
+            stop_input_stream_after: AtomicUsize::new(0),
         });
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -178,8 +184,16 @@ async fn serve(conn: quinn::Connection, st: Arc<HostState>) -> Result<(), String
             if !matches!(read_stream_kind(&mut r).await, Ok(StreamKind::Input)) {
                 continue;
             }
+            let mut on_this_stream = 0;
             while let Ok(Some(ev)) = read_input(&mut r).await {
                 let _ = input_st.inputs.send(ev);
+                on_this_stream += 1;
+                let stop_after = input_st.stop_input_stream_after.load(Ordering::SeqCst);
+                if stop_after != 0 && on_this_stream == stop_after {
+                    input_st.stop_input_stream_after.store(0, Ordering::SeqCst);
+                    let _ = r.stop(0u32.into());
+                    break;
+                }
             }
         }
     });
@@ -514,6 +528,51 @@ fn input_sent_immediately_after_bind_is_not_lost() {
     let seqs: Vec<u32> = got.iter().map(|e| e.seq).collect();
     assert_eq!(seqs, [1, 2, 3]);
     assert!(got.iter().all(|e| e.session_id == SESSION_ID));
+    close(h);
+}
+
+/// The host keeps one input sequencer per session, not per stream, and
+/// closes the connection on anything but the next number. When the client
+/// reopens its input stream for the same session after a write error, the
+/// sequence must continue, not restart at 1.
+#[test]
+fn input_sequence_continues_after_the_stream_is_reopened() {
+    let host = FakeHost::start();
+    let (id, phone_fp) = new_phone();
+    host.trust(&phone_fp);
+    let h = connect_to(&host, &id);
+    start_streaming(h);
+
+    bind_session(h, SESSION_ID as i64).expect("bind_session");
+    host.state
+        .stop_input_stream_after
+        .store(1, Ordering::SeqCst);
+
+    assert!(send_key(h, 0x41, true).expect("key down"));
+    let first = host.inputs.recv_timeout(WAIT).expect("first input event");
+    // Let the host's STOP_SENDING reach the client, so the next write on the
+    // old stream fails and the client drops that stream.
+    std::thread::sleep(Duration::from_millis(500));
+    // Written to the stopped stream: fails and is dropped, as before.
+    assert!(send_key(h, 0x41, false).expect("key up"));
+    std::thread::sleep(Duration::from_millis(200));
+    // Opens a new input stream for the same session.
+    assert!(send_text(h, "x").expect("text"));
+    let second = host
+        .inputs
+        .recv_timeout(WAIT)
+        .expect("input on the new stream");
+
+    assert_eq!(
+        first.kind,
+        InputKind::Key {
+            vk: 0x41,
+            down: true
+        }
+    );
+    assert_eq!(second.kind, InputKind::Text { text: "x".into() });
+    assert_eq!((first.seq, second.seq), (1, 2));
+    assert!([&first, &second].iter().all(|e| e.session_id == SESSION_ID));
     close(h);
 }
 
